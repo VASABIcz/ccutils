@@ -1,5 +1,5 @@
 #include "RegAlloc.h"
-#include "../../utils/utils.h"
+#include "utils/utils.h"
 
 void RegAlloc::freeReg(size_t handle) {
     // println("[REG] deallocated {}", regs64[handle]);

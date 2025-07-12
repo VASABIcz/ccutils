@@ -29,3 +29,6 @@ add_library(vi_codegen_x86 OBJECT
         x86/RegAlloc.h
         x86/RegAlloc.cpp
 )
+
+target_link_libraries(vi_codegen PRIVATE ccutils)
+target_link_libraries(vi_codegen_x86 PRIVATE ccutils)

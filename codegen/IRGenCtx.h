@@ -203,6 +203,10 @@ struct IRGenCtx {
         return &this->gen.createBlock(name, current());
     }
 
+    CodeBlock<CTX>* createBlock(string_view name, BaseBlock* b) {
+        return &this->gen.createBlock(name, b);
+    }
+
     SELF getSelf() const {
         return *static_cast<const SELF*>(this);
     }
@@ -288,6 +292,24 @@ struct IRGenCtx {
             withBlock(bodyEndBlock)->commitReachableDefs(phis);
             bodyEndBlock->template pushInstruction<instructions::Jump<CTX>>(startBlock->id());
         }
+
+        return nextBlock1;
+    }
+
+    Result<BaseBlock*> makeWhile(
+            optional<string_view> label,
+            std::function<Result<pair<SSARegisterHandle, BaseBlock*>>(SELF)> cond,
+            std::function<Result<BaseBlock*>(SELF)> body
+    ) {
+        auto nextBlock1 = makeLoop(label, [&](SELF ctx1) -> Result<BaseBlock*> {
+            return ctx1.makeIf([&](SELF ctx2) -> Result<pair<SSARegisterHandle, BaseBlock*>> {
+                return cond(ctx2);
+            }, [&](SELF ctx3) -> Result<BaseBlock*> {
+                return body(ctx3);
+            }, [&](SELF ctx3) -> Result<BaseBlock*> {
+                return ctx3.makeBreak();
+            });
+        });
 
         return nextBlock1;
     }

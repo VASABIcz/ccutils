@@ -67,12 +67,17 @@ struct StackAllocator {
         return allocateStackHandle(allocationStart);
     }
 
+    size_t numAllocs() const {
+        return stackAllocations.size();
+    }
+
     void freeStack(size_t handle) {
         auto rawOffset = getStackOffset(handle);
         // println("[REG] freeing stack {}-{}", rawOffset, amountBytes);
         for (auto i: views::iota(rawOffset, rawOffset + stackSize(handle))) {
             stack[i] = false;
         }
+        stackAllocations.erase(handle);
     }
 
     void dumpStack() {
@@ -80,10 +85,6 @@ struct StackAllocator {
         println("{}", stackAllocations);
         println("{}", stack);
         println("=== end alloc ===");
-    }
-
-    size_t numAllocs() const {
-        return stackAllocations.size();
     }
 
     static bool isStack(size_t handle) {

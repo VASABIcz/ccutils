@@ -235,6 +235,12 @@ public:
         return allocateRegister(reg);
     }
 
+    std::optional<CodeGen::RegisterHandle> getReg(std::optional<SSARegisterHandle> reg) {
+        if (not reg.has_value()) return {};
+
+        return getReg(*reg);
+    }
+
     optional<CodeGen::RegisterHandle> getRegOrNull(const SSARegisterHandle& reg) {
         if (not reg.isValid()) return {};
 
@@ -383,6 +389,7 @@ private:
 
             auto oldRegs = this->assembler.numRegs();
 
+            this->assembler.doStuff();
             instruction->generate(static_cast<CTX::GEN&>(*this));
             currentInstructionCounter++;
 

@@ -3,9 +3,9 @@
 #include <fstream>
 #include "X86Assembler.h"
 
-#include "../../utils/utils.h"
-#include "../../utils/code_gen.h"
-#include "../../utils/arch.h"
+#include "utils/utils.h"
+#include "utils/code_gen.h"
+#include "utils/arch.h"
 
 // TODO mov cache
 

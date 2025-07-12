@@ -102,6 +102,22 @@ struct Arg {
         return idk;
     }
 
+    static Arg ImmPtr(const void* value) {
+        Arg idk;
+        idk.type = Type::IMMEDIATE;
+        idk.immValue = std::bit_cast<size_t>(value);
+
+        return idk;
+    }
+
+    static Arg ImmPtrC(const void* value) {
+        Arg idk;
+        idk.type = Type::IMMEDIATE;
+        idk.immValue = std::bit_cast<size_t>(value);
+
+        return idk;
+    }
+
     static Arg Rel32Adr(size_t symbol, int32_t adent) {
         Arg idk;
         idk.symbol = symbol;
@@ -156,6 +172,13 @@ public:
         }
 
         return current;
+    }
+
+    void readTicks() {
+        // RDTSCP
+        pushBack(0x0F);
+        pushBack(0x01);
+        pushBack(0xF9);
     }
 
     void writeRex(bool immediate64 = false, bool extDest = false, bool extSrc = false, bool extIndex = false);
@@ -1060,7 +1083,7 @@ public:
         if (ret.has_value()) {
             switch (ret->type) {
                 case Arg::IMMEDIATE:
-                // case Arg::SYMBOL:
+                    // case Arg::SYMBOL:
                 case Arg::REG_OFFSET:
                 case Arg::SYMBOL_RIP_OFF_32:
                 case Arg::SYMBOL_RIP_VALUE_32:

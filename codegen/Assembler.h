@@ -127,6 +127,10 @@ public:
     virtual void addressOf(RegisterHandle tgt, RegisterHandle obj) = 0;
     virtual void signExtend(RegisterHandle dst, RegisterHandle src) = 0;
 
+    virtual void doStuff() {
+        TODO();
+    }
+
     // int ops
     virtual void arithmeticInt(ArithmeticOp op, RegisterHandle tgt, RegisterHandle lhs, RegisterHandle rhs) {};
     virtual void subInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(SUB);

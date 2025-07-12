@@ -22,8 +22,8 @@ enum class X64Instruction: u8 {
     baseJmp = 0x70,
     jmp = 0xE9,
     Or = 0x0B,
-    Test = 0x85,
     And = 0x23,
+    Test = 0x85,
     Call = 0xFF
 };
 

@@ -22,6 +22,6 @@ struct char_pointer_hash {
 
 using transparent_string_hash = overload<
         std::hash<std::string>,
-        std::hash<std::string_view>/*,
-        char_pointer_hash*/
+        std::hash<std::string_view>,
+        char_pointer_hash
 >;

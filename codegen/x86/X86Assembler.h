@@ -143,6 +143,8 @@ public:
     vector<RegisterHandle> getArgHandles() override;
     void print() const override;
 
+    void allocRegSpilling();
+
     // int operations
     void divInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) override;
     void modInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) override;
@@ -363,8 +365,10 @@ public:
             if (didSpill) {
                 // println("[reg-ctx] did spill {}", reg);
                 auto hand = self->dumpToStack(reg);
+                assert(not toRestore.contains(reg));
                 toRestore.insert({reg, hand});
             } else {
+                assert(not toFree.contains(self->allocator.toHandleStupid(reg)));
                 toFree.emplace(self->allocator.toHandleStupid(reg));
             }
 
@@ -422,6 +426,7 @@ public:
             auto reg = allocReg();
 
             self->movReg(reg, handle);
+            assert(not toWriteback.contains(reg));
             toWriteback.insert({reg, handle});
 
             return reg;
@@ -438,7 +443,7 @@ public:
                 self->freeRegister(hand);
             }
             for (auto f : toFree) {
-                self->allocator.freeHandle(f);
+                self->freeRegister(f);
             }
         }
     };
@@ -480,7 +485,15 @@ public:
 
     void freeHandles(initializer_list<size_t> handles);
 
+    size_t getLabelId(size_t name);
+
+    size_t toHandleStupid(const X64Register& reg) {
+        return allocator.toHandleStupid(reg);
+    }
+
     Arg handleToArg(size_t handle);
+
+    Arg handleToArgAssume8(size_t handle);
 
     size_t calculateStackSizeFastCall(span<const RegisterHandle> args);
 
