@@ -2,6 +2,12 @@ include_guard(GLOBAL)
 
 add_library(ccutils pepa.cpp)
 
+add_executable(gen
+        $<TARGET_OBJECTS:utils>
+        $<TARGET_OBJECTS:gen64>
+        genTest.cpp
+)
+
 add_subdirectory(codegen)
 add_subdirectory(gen64)
 add_subdirectory(lexing)
