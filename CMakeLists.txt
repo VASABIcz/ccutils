@@ -1,6 +1,7 @@
 include_guard(GLOBAL)
 
 add_library(ccutils pepa.cpp)
+add_executable(anotator anotator.cpp)
 
 add_executable(gen
         $<TARGET_OBJECTS:utils>

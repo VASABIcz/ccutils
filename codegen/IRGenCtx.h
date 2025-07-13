@@ -204,7 +204,7 @@ struct IRGenCtx {
     }
 
     CodeBlock<CTX>* createBlock(string_view name, BaseBlock* b) {
-        return &this->gen.createBlock(name, b);
+        return &this->gen.createBlock(name, *b);
     }
 
     SELF getSelf() const {
@@ -276,20 +276,20 @@ struct IRGenCtx {
 
     Result<BaseBlock*> makeLoop(
         optional<string_view> label,
-        Result<std::function<Result<BaseBlock*>(SELF)>> body
+        std::function<Result<BaseBlock*>(SELF)> body
     ) {
-        auto& startBlock = createBlock("loop-body", current());
-        auto& nextBlock1 = createBlock("loop-next", current());
-        startBlock.setLoopHeader(true);
+        auto startBlock = createBlock("loop-body", &current());
+        auto nextBlock1 = createBlock("loop-next", &current());
+        startBlock->setLoopHeader(true);
 
         pushInstruction<instructions::Jump<CTX>>(startBlock->id());
         // FIXME not sure what are we doing here
-        auto phis = this->createPhis(startBlock);
+        auto phis = this->createPhis(*startBlock);
 
         auto idk = withBlock(startBlock).withLoop(startBlock->id(), nextBlock1->id());
         BaseBlock* bodyEndBlock = TRY(body(idk));
         if (bodyEndBlock != nullptr) {
-            withBlock(bodyEndBlock)->commitReachableDefs(phis);
+            withBlock(bodyEndBlock).commitReachableDefs(phis);
             bodyEndBlock->template pushInstruction<instructions::Jump<CTX>>(startBlock->id());
         }
 
