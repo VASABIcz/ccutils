@@ -28,7 +28,7 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct NoOp: public IR0Instruction<"noop", CTX> {
+    class NoOp: public IR0Instruction<"noop", CTX> {
         PUB_VIRTUAL_COPY(NoOp)
         using IR0Instruction<"noop", CTX>::IR0Instruction;
 
@@ -205,7 +205,7 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Assign: public IR1Instruction<"assign", CTX> {
+    class Assign: public IR1Instruction<"assign", CTX> {
     PUB_VIRTUAL_COPY(Assign)
         using IR1Instruction<"assign", CTX>::IR1Instruction;
 

@@ -128,7 +128,7 @@ public:
     virtual void signExtend(RegisterHandle dst, RegisterHandle src) = 0;
 
     virtual void doStuff() {
-        TODO();
+        // TODO();
     }
 
     // int ops

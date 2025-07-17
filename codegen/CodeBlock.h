@@ -26,6 +26,8 @@ private:
 public:
     CodeBlock(CodeBlock&&) = default;
 
+    virtual ~CodeBlock() = default;
+
     [[nodiscard]] const vector<CopyPtr<IRInstruction<CTX>>>& getInstructions() const { return instructions; }
 
     [[nodiscard]] vector<CopyPtr<IRInstruction<CTX>>>& getInstructionsMut() { return instructions; }
@@ -45,7 +47,6 @@ public:
 
     template<typename T, typename ...Args>
     T* pushInstruction(Args&&... args) {
-        assert(this != nullptr);
         assert(isEmpty() || !getInstruction(-1)->isTerminal());
         auto instruction = createInstruction<T>(std::forward<Args>(args)...);
         auto ptr = instruction.get();

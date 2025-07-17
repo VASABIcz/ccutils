@@ -83,7 +83,7 @@ public:
         boundLabels[id] = BoundLabel{currentOffset(), type, id};
     }
 
-    virtual void bindHint(std::string_view h) {}
+    void bindHint(std::string_view h) override {}
 
     void bindJmp(size_t id) {
         bindRawLabel(id, LABEL_TYPE_JMP);
@@ -104,6 +104,11 @@ public:
     void requestLabel(size_t id, ImmSpace space, size_t type, BaseType baseType) {
         assert(labelTypeToSize(baseType) == space.size);
         slotLabels[id].push_back(SlotLabel{type, space.offset, id, baseType, 0});
+    }
+
+    void requestLabelRel4(size_t id, ImmSpace space, size_t type, long adend) {
+        assert(labelTypeToSize(BaseType::RIP_REL_4) == space.size);
+        slotLabels[id].push_back(SlotLabel{type, space.offset, id, BaseType::RIP_REL_4, adend});
     }
 
     void requestJmpLabel(size_t id, ImmSpace space) {
@@ -338,10 +343,10 @@ public:
     size_t dumpToStack(X64Register reg);
 
     template<typename Ret, typename Class, typename... Args>
-    constexpr void finallCallbackWrapper(Class obj, Ret (Class::* lambda)(Args...) const, Args... args);
+    void finallCallbackWrapper(Class obj, Ret (Class::* lambda)(Args...) const, Args... args);
 
     template<typename Class, typename... Args>
-    constexpr void callWrapper(Class obj, void (Class::* lambda)(Args...) const, span<const X64Register> ignore1);
+    void callWrapper(Class obj, void (Class::* lambda)(Args...) const, span<const X64Register> ignore1);
 
     template<typename T>
     void withTempReg(T callback, span<const X64Register> a);
@@ -608,7 +613,17 @@ public:
 
             auto bound = this->getBoundLabelById(it.id);
 
-            linkRelative(it.offset, bound.offset, 4, 0);
+            linkRelative(it.offset, bound.offset, 4, it.adend);
+        });
+    }
+
+    void simpleLink(size_t type) {
+        forEachLabel([&](SlotLabel& it) {
+            if (it.type != type) return;
+
+            auto bound = this->getBoundLabelById(it.id);
+
+            linkRelative(it.offset, bound.offset, labelTypeToSize(it.baseType), it.adend);
         });
     }
 

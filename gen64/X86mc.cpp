@@ -329,9 +329,12 @@ void X86mc::someOffsetStuffForMov(X64Register dst, X64Register src, int offset) 
     bool is32BitOffset = offset > 127 || offset < -128;
     bool isRspEncoding = srcEncoding == X64Register::Rsp.getEncoding();
 
-    pushBack(((is32BitOffset ? 0b10u : 0b01u) << 6) | (dstEncoding << 3) | srcEncoding);
+    u8 encoding = (offset == 0) ? 0b00u : (is32BitOffset ? 0b10u : 0b01u);
+
+    pushBack((encoding << 6) | (dstEncoding << 3) | srcEncoding);
     if (isRspEncoding) writeSIB(SibScale::One, X64Register::Rsp, X64Register::Rsp);
-    if (is32BitOffset)
+    if (offset == 0) {}
+    else if (is32BitOffset)
         writeImmValue(offset);
     else
         writeImmValue(static_cast<char>(offset));

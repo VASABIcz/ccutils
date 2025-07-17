@@ -19,19 +19,19 @@ namespace instructions {
     template<typename CTX>
     class NoOp;
     template<typename CTX>
-    class Branch;
+    struct Branch;
     template<typename CTX>
-    class JumpTrue;
+    struct JumpTrue;
     template<typename CTX>
-    class JumpFalse;
+    struct JumpFalse;
     template<typename CTX>
-    class Jump;
+    struct Jump;
     template<typename CTX>
-    class FallTrough;
+    struct FallTrough;
     template<typename CTX>
     class Assign;
     template<typename CTX>
-    class AddressOf;
+    struct AddressOf;
     template<typename CTX>
     struct IntEquals;
     template<typename CTX>
@@ -45,9 +45,9 @@ namespace instructions {
     template<typename CTX>
     struct IntLess;
     template<typename CTX>
-    class BranchCond;
+    struct BranchCond;
     template<typename CTX>
-    class JumpCond;
+    struct JumpCond;
     template<typename CTX>
     struct BoolNot;
     template<typename CTX>

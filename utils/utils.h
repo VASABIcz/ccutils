@@ -720,3 +720,9 @@ constexpr string safeSymbol(string_view in) {
     }
     return out;
 }
+
+#ifdef __clang__
+#define STACK_BASE_ADDRESS() ({auto stuff = 0; &stuff;})
+#else
+#define STACK_BASE_ADDRESS() __builtin_stack_address()
+#endif

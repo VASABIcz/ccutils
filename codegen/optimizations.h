@@ -427,8 +427,8 @@ inline size_t mergeLiveRange(const vector<bool>& a, const vector<bool>& b, vecto
     size_t overlaps = 0;
 
     for (auto i = 0UL; i < a.size(); i++) {
-        overlaps += a[i] & b[i];
-        out[i] = a[i] | b[i];
+        overlaps += a[i] && b[i];
+        out[i] = a[i] || b[i];
     }
 
     return overlaps;
@@ -453,7 +453,7 @@ bool optimizeCumulativeOps(typename CTX::IRGEN& gen, span<size_t> linearized, ma
             if (auto* it = instruction->template cst<instructions::BinaryInstruction<CTX>>(); it != nullptr) {
                 auto tgt = it->target;
                 auto lhs = it->lhs;
-                auto rhs = it->rhs;
+                // auto rhs = it->rhs;
 
                 vector<bool> merged;
                 // FIXME proper handling of dead registers

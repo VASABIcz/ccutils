@@ -173,6 +173,8 @@ public:
     }
 
     Result<void> gen() {
+        optimizePhis<CTX>(irGen);
+
         flatBlocks = irGen.graph.flattenBlocks();
         currentLiveRanges = liveRanges(flatBlocks);
 
@@ -184,6 +186,7 @@ public:
 
         do {
             didOptimize = false;
+            didOptimize |= optimizeAssign<CTX>(irGen);
             didOptimize |= mergeLiveRanges<CTX>(irGen, currentLiveRanges);
             didOptimize |= removeFallJumps<CTX>(irGen, flatBlocks);
         } while (didOptimize);

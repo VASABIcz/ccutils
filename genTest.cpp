@@ -3,6 +3,7 @@
 #include "gen64/X86mc.h"
 #include "utils/utils.h"
 #include "utils/code_gen.h"
+#include "gen64/elf.h"
 
 using namespace std;
 

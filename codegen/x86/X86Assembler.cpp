@@ -869,12 +869,12 @@ void X86Assembler::withTempReg(T callback, span<const X64Register> ign) {
 }
 
 template<typename Ret, typename Class, typename... Args>
-constexpr void X86Assembler::finallCallbackWrapper(Class obj, Ret (Class::*lambda)(Args...) const, Args... args) {
+void X86Assembler::finallCallbackWrapper(Class obj, Ret (Class::*lambda)(Args...) const, Args... args) {
     (obj.*lambda)(args...);
 }
 
 template<typename Class, typename... Args>
-constexpr void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, span<const X64Register> ignore1) {
+void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, span<const X64Register> ignore1) {
     vector<pair<X64Register, optional<size_t>>> restorCtx;
     set<X64Register> clobbered;
 

@@ -4,6 +4,7 @@
 #include <fstream>
 #include <vector>
 #include <sstream>
+#include <filesystem>
 #include "utils/stringify.h"
 
 struct Label {
@@ -87,7 +88,8 @@ int main(int argc, char **argv) {
     auto bytesFile = std::string_view(argv[1], std::strlen(argv[1]));
     auto hintFile = (argc > 2) ? std::string_view(argv[2], std::strlen(argv[2])) : bytesFile;
 
-    std::ifstream hintStream((std::string(hintFile)));
+    auto path2 = (std::filesystem::path(std::string(hintFile)).lexically_normal());
+    std::ifstream hintStream(path2);
     auto hints = parseFile(hintStream);
 
     system("rm .hint-tmp");
