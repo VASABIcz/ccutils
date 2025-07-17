@@ -150,7 +150,7 @@ struct ControlFlowGraph {
         for (const auto& block : validNodes()) {
             for (const auto& reg : block->getRegistersConst()) {
                 auto root = getRoot(reg->getHandle()).getHandle();
-                println("id: {} - mName: {} - uses: {} - parent: {} - type: {} - size: {}", reg->getHandle().toString(), reg->name, reg->useCount, root == reg->getHandle() ? "_" : root.toString(), reg->typeString(), reg->sizeBytes());
+                println("id: {} - name: {} - parent: {} - type: {} - size: {}", reg->getHandle().toString(), reg->name, root == reg->getHandle() ? "_" : root.toString(), reg->typeString(), reg->sizeBytes());
             }
         }
     }
@@ -601,7 +601,7 @@ struct ControlFlowGraph {
                 //    for each input operand opd of op do
                 //       intervals[opd].addRange(b.from, op.id)
                 //       live.add(opd)
-                operation->visitSrc([&](auto& source) {
+                operation->visitSrcs([&](auto& source) {
                     if (!source.isValid()) return; // return can have invalid src
                     addRange(source, blockRange.first, blockRange.first+index);
                     live.insert(source);

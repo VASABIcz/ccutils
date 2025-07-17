@@ -135,6 +135,7 @@ public:
     }
 
     void doPrintLinearized() {
+        irGen.graph.printRegisters();
         if (!currentLiveRanges.empty() && !(*currentLiveRanges.begin()).second.empty()) {
             auto max_value = (*currentLiveRanges.begin()).second.size()-1; // FIXME this aint right
             auto max_value_len = to_string(max_value).size();
@@ -157,12 +158,13 @@ public:
     void doDumpGraphPNG() {
         string buf = "digraph {\n";
         for (const auto& node : irGen.graph.validNodesConst()) {
-            /*       if (node->previousId().has_value()) {
-                        buf += stringify("{} -> {} [color=green]\n", *node->previousId(), node->blockId);
-                    }*/
-            buf += stringify("{} [label=\\\"{}\\\"]\n", node->blockId, node->tag);
-            for (auto tgt : node->getTargets())
-                buf += stringify("{} -> {} [color=red]\n", node->blockId, tgt);
+            auto text = node->toString(irGen);
+            buf += stringify("{} [label=\\\"{}\\\"] [shape=box] [xlabel=\\\"{}\\\"]\n", node->blockId, text, node->tag);
+            bool pepa = true;
+            for (auto tgt : node->getTargets()) {
+                buf += stringify("{} -> {} [color=red] [label=\\\"{}\\\"]\n", node->blockId, tgt, pepa ? "true" : "false");
+                pepa = !pepa;
+            }
         }
         for (auto i : views::iota(0u, flatBlocks.size()-1)) {
             buf += stringify("{} -> {} [color=blue]\n", flatBlocks[i], flatBlocks[i+1]);
@@ -173,6 +175,7 @@ public:
     }
 
     Result<void> gen() {
+        optimizeAssign<CTX>(irGen);
         optimizePhis<CTX>(irGen);
 
         flatBlocks = irGen.graph.flattenBlocks();
@@ -186,7 +189,6 @@ public:
 
         do {
             didOptimize = false;
-            didOptimize |= optimizeAssign<CTX>(irGen);
             didOptimize |= mergeLiveRanges<CTX>(irGen, currentLiveRanges);
             didOptimize |= removeFallJumps<CTX>(irGen, flatBlocks);
         } while (didOptimize);

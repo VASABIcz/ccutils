@@ -48,7 +48,7 @@ bool optimizePhis(typename CTX::IRGEN& gen) {
                             continue;
                         }
                     }
-                    instruction1->visitSrc([&](auto& reg) {
+                    instruction1->visitSrcs([&](auto& reg) {
                         if (reg == target) {
                             reg = valu;
                         }
@@ -74,16 +74,16 @@ bool optimizeAssign(typename CTX::IRGEN& gen) {
             if (!instruction->template is<instructions::Assign<CTX>>()) continue;
 
             auto* assign = instruction->template cst<instructions::Assign<CTX>>();
-            auto& value = gen.getRecord(assign->value);
+            // auto& value = gen.getRecord(assign->value);
             // auto& target = gen.getRecord(assign->target);
-            value.decUseCount();
+            // value.decUseCount();
 
             for (auto& otherBlock: gen.nodes()) {
                 for (const auto& instruction1: otherBlock->getInstructions()) {
-                    instruction1->visitSrc([&](auto& reg) {
+                    instruction1->visitSrcs([&](auto& reg) {
                         if (reg == assign->target) {
                             reg = assign->value;
-                            gen.markUse(assign->value);
+                            // gen.markUse(assign->value);
                         }
                     });
                 }
@@ -167,7 +167,7 @@ void replaceInstr(typename CTX::IRGEN& gen, SSARegisterHandle chad, const std::s
            inst->target = chad;
        }
        // patch reads
-       inst->visitSrc([&](auto& src) {
+       inst->visitSrcs([&](auto& src) {
            if (virgins.contains(src)) {
                src = chad;
            }

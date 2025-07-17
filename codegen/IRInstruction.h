@@ -25,8 +25,6 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
 
     virtual void print(CTX::IRGEN& gen, std::ostream& stream) = 0;
 
-    virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {}
-
     virtual void generate(CTX::GEN& gen) = 0;
 
     [[nodiscard]] virtual vector<size_t> branchTargets() const {
@@ -65,6 +63,22 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     constexpr void basePrint(std::ostream& stream, StringChecker<type_identity_t<Args>...> strArg, Args&&... argz) {
         stream << stringify("{} := {} {}", target, name, stringify(strArg, std::forward<Args>(argz)...));
     }
+
+    std::string toString(CTX::IRGEN& gen) const {
+        std::stringstream stream;
+        print(gen, stream);
+
+        return stream.str();
+    }
+
+    void visitSrcs(std::function<void(SSARegisterHandle&)> fn) {
+        visitSrc(fn);
+        visitSrc([](SSARegisterHandle& reg) {
+            assert(reg.isValid());
+        });
+    }
+private:
+    virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {}
 };
 
 template<StringLiteral V, typename CTX>

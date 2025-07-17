@@ -76,6 +76,15 @@ public:
     size_t blockId;
     vector<CopyPtr<IRInstruction<CTX>>> instructions{};
 
+    std::string toString(CTX::IRGEN& gen) {
+        std::stringstream stream;
+        for (auto& inst : getInstructions()) {
+            inst->print(gen, stream);
+            stream << "\\l";
+        }
+        return stream.str();
+    }
+
     CodeBlock clone() const {
         return *this;
     }
