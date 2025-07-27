@@ -40,6 +40,31 @@ struct ControlFlowGraph {
         (void)nodes[blockId].uPtrRef().reset(nullptr);
     }
 
+    template<typename T, typename... Argz>
+    void patchInst(SSARegisterHandle target, Argz... argz) {
+        for (auto& block : this->validNodesConst()) {
+            for (auto& inst : block->getInstructionsMut()) {
+                inst.uPtrRef() = make_unique<T>(target, argz...);
+            }
+        }
+    }
+
+    template<typename T, typename... Argz>
+    void patchInst(IRInstruction<CTX>* target, Argz... argz) {
+        for (auto& block : this->validNodesConst()) {
+            for (auto& inst : block->getInstructionsMut()) {
+                if (inst.get() == target) {
+                    inst.uPtrRef() = make_unique<T>(argz...);
+                }
+            }
+        }
+    }
+
+    template<template<typename> typename T, typename... Argz>
+    void patchInst(SSARegisterHandle target, Argz... argz) {
+        patchInst<T<CTX>>(target, argz...);
+    }
+
     void dumpSVG(string_view name) const {
         string buf = "digraph Test {\n";
         for (const auto& node : validNodesConst()) {
@@ -331,6 +356,12 @@ struct ControlFlowGraph {
         return n;
     }
 
+    void removeInstruction(SSARegisterHandle tgt) {
+        for (auto& block : this->nodes) {
+            block->removeInstruction(tgt);
+        }
+    }
+
     vector<size_t> flattenBlocks() const {
         vector<size_t> toProcessStack;
         vector<size_t> result;
@@ -475,6 +506,7 @@ struct ControlFlowGraph {
 
         // NOTE bypasssStart ignores start index of register needed for correct loop handling
         auto addRange = [&](SSARegisterHandle handle, size_t s, size_t e, bool bypassStart = false) {
+            // println("AAAAAAAAAAAAAAAAaa addRange {} - {}..{}", handle, s, e);
             assert(handle.isValid());
             auto& range = ranges[handle];
 
@@ -586,6 +618,10 @@ struct ControlFlowGraph {
 
             // for each operation op of b in reverse order do
             for (auto [index, operation] : getBlock(blockId).instructions | views::enumerate | views::reverse) {
+                // FIXME patch to make even unused registers alive
+                if (operation->target.isValid()) {
+                    addRange(operation->target, blockRange.first+index, blockRange.first+index);
+                }
                 // "Phi functions are not processed during this iteration of operations, instead they are iterated separately"
                 if (operation->template is<instructions::PhiFunction<CTX>>()) continue;
 
@@ -613,14 +649,18 @@ struct ControlFlowGraph {
                     live.erase(phi->target);
                 }
 
+                // println("LIVE INS FOR {} is {}", blockId, live);
+
                 // if b is loop header then
                 if (isLoopHeader(blockId)) {
                     //      loopEnd = last block of the loop starting at b
                     //      for each opd in live do
                     //          intervals[opd].addRange(b.from, loopEnd.to)
                     auto loopEnd = getLastBlockOfLoop(blockId);
+                    // println("[LIVE] end for {} is {}", blockId, loopEnd);
                     auto loopEndEnd = getBlockRanges(loopEnd).second;
                     for (auto reg : live) {
+                        // println("[LIVE] is {}", reg);
                         addRange(reg, blockRange.first, loopEndEnd, true);
                     }
                 }
@@ -645,6 +685,22 @@ struct ControlFlowGraph {
                 phiRef->pushVersion(snd, endBlock.blockId);
             }
         }
+    }
+
+    void forEachInstruction(std::function<void(IRInstruction<CTX>&)> body) {
+        for (auto& block : this->validNodesConst()) {
+            for (auto& inst : block->getInstructionsMut()) {
+                body(*inst);
+            }
+        }
+    }
+
+    IRInstruction<CTX>* resolveInstruction(SSARegisterHandle handle) {
+            IRInstruction<CTX>* res = nullptr;
+            forEachInstruction([&](auto& inst) {
+                if (inst.target == handle) res = &inst;
+            });
+            return res;
     }
 
     map<SSARegisterHandle, SSARegisterHandle> reachableDefinitions(const BaseBlock& block) const {

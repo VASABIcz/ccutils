@@ -182,6 +182,14 @@ public:
         erase_if(instructions, [&](auto& it) { return it.get() == inst.get(); });
     }
 
+    void removeInstruction(const IRInstruction<CTX>* inst) {
+        erase_if(instructions, [&](auto& it) { return it.get() == inst; });
+    }
+
+    void removeInstruction(SSARegisterHandle tgt) {
+        erase_if(instructions, [&](auto& it) { return it->target == tgt; });
+    }
+
     const vector<CopyPtr<typename CTX::REG>>& getRegistersConst() const {
         return registers;
     }
@@ -226,13 +234,13 @@ public:
         return {};
     }
 
-    vector<typename CTX::REG*> getArgRegisters() const {
-        vector<typename CTX::REG*> buf;
+    [[nodiscard]] vector<SSARegisterHandle> getArgRegisters() const {
+        vector<SSARegisterHandle> buf;
 
-        for (const auto& reg : registers) {
-            if (!reg->isArgument()) continue;
-
-            buf.push_back(reg.get());
+        for (const auto& inst : getInstructions()) {
+            if (const auto& arg = inst->template cst<instructions::Arg<CTX>>(); arg) {
+                buf.push_back(arg->target);
+            }
         }
 
         return buf;

@@ -194,6 +194,10 @@ namespace instructions {
             return buf;
         }
 
+        map<size_t, SSARegisterHandle> getRawVersions() const {
+            return versions;
+        }
+
         optional<SSARegisterHandle> getBySource(size_t src) {
             if (not versions.contains(src)) return {};
 
@@ -629,6 +633,22 @@ namespace instructions {
             gen.assembler.addressOf(gen.getReg(this->target), gen.getReg(obj));
         }
     };
+
+    template<typename CTX>
+    struct Arg: public NamedIrInstruction<"arg", CTX> {
+        PUB_VIRTUAL_COPY(Arg)
+
+        Arg(SSARegisterHandle tgt): NamedIrInstruction<"arg", CTX>(tgt) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
+
+        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+            this->basePrint(stream, "");
+        }
+
+        void generate(CTX::GEN& gen) override {}
+    };
+
 
     template<typename CTX>
     struct PointerStore: public NamedIrInstruction<"ptr_store", CTX> {

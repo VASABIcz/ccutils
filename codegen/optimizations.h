@@ -25,6 +25,25 @@
     return didOptimize;
 }*/
 
+// replace all ocuracnes of virgins with chad
+template<typename CTX>
+void replaceInstr(typename CTX::IRGEN& gen, SSARegisterHandle chad, const std::set<SSARegisterHandle>& virgins) {
+    forEachInstruction(gen.graph, [&](auto& inst, auto& node) -> bool {
+        // patch writes
+        if (virgins.contains(inst->target)) {
+            inst->target = chad;
+        }
+        // patch reads
+        inst->visitSrcs([&](auto& src) {
+            if (virgins.contains(src)) {
+                src = chad;
+            }
+        });
+
+        return true;
+    });
+}
+
 /// get rid of phi functions that have only one source
 template<typename CTX>
 bool optimizePhis(typename CTX::IRGEN& gen) {
@@ -69,29 +88,29 @@ template<typename CTX>
 bool optimizeAssign(typename CTX::IRGEN& gen) {
     bool didOptimize = false;
 
-    for (auto& block: gen.nodes()) {
-        for (const auto& instruction: block->getInstructions() | views::reverse) {
-            if (!instruction->template is<instructions::Assign<CTX>>()) continue;
+    std::vector<std::pair<CodeBlock<CTX>*, IRInstruction<CTX>*>> toRemove;
 
-            auto* assign = instruction->template cst<instructions::Assign<CTX>>();
-            // auto& value = gen.getRecord(assign->value);
-            // auto& target = gen.getRecord(assign->target);
-            // value.decUseCount();
+    forEachInstruction(gen.graph, [&](auto& inst, auto& node) -> bool {
+        if (!inst->template is<instructions::Assign<CTX>>()) return true;
 
-            for (auto& otherBlock: gen.nodes()) {
-                for (const auto& instruction1: otherBlock->getInstructions()) {
-                    instruction1->visitSrcs([&](auto& reg) {
-                        if (reg == assign->target) {
-                            reg = assign->value;
-                            // gen.markUse(assign->value);
-                        }
-                    });
-                }
-            }
+        auto* assign = inst->template cst<instructions::Assign<CTX>>();
+        auto tgt = assign->target;
+        auto value = assign->value;
+        auto t = gen.getRecord(tgt);
+        auto v = gen.getRecord(value);
+        if (t.getPrevious().has_value() && v.getPrevious().has_value()) PANIC();
+        if (v.getPrevious().has_value()) PANIC();
 
-            block->removeInstruction(instruction);
-            didOptimize = true;
-        }
+
+        replaceInstr<CTX>(gen, tgt, set{value});
+        toRemove.emplace_back(node.get(), inst.get());
+        didOptimize = true;
+
+        return true;
+    });
+
+    for (auto [block, instruction] : toRemove) {
+        block->removeInstruction(instruction);
     }
 
     return didOptimize;
@@ -101,7 +120,7 @@ template<typename CTX>
 void forEachInstruction(ControlFlowGraph<CTX>& g, auto&& fn) {
     for (auto& node : g.validNodes()) {
         for (auto& inst : node->instructions) {
-            if (!fn(inst)) return;
+            if (!fn(inst, node)) return;
         }
     }
 }
@@ -156,25 +175,6 @@ bool removeUnusedInstructions(IRGEN& gen) {
     }
 
     return didOptimize;
-}
-
-// replace all ocuracnes of virgins with chad
-template<typename CTX>
-void replaceInstr(typename CTX::IRGEN& gen, SSARegisterHandle chad, const std::set<SSARegisterHandle>& virgins) {
-    forEachInstruction(gen.graph, [&](auto& inst) -> bool {
-       // patch writes
-       if (virgins.contains(inst->target)) {
-           inst->target = chad;
-       }
-       // patch reads
-       inst->visitSrcs([&](auto& src) {
-           if (virgins.contains(src)) {
-               src = chad;
-           }
-       });
-
-       return true;
-   });
 }
 
 // TODO can we do partial merge?

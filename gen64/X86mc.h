@@ -27,6 +27,7 @@ struct Arg {
     Type type;
     size_t immValue;
     std::optional<size_t> symbol;
+    std::optional<size_t> symbolType;
 
     size_t sizeBytes() const {
         switch (type) {
@@ -110,6 +111,15 @@ struct Arg {
         return idk;
     }
 
+    template<class T, class... Args>
+    static Arg FunPtr(T(*value)(Args...)) {
+        Arg idk;
+        idk.type = Type::IMMEDIATE;
+        idk.immValue = std::bit_cast<size_t>(value);
+
+        return idk;
+    }
+
     static Arg ImmPtrC(const void* value) {
         Arg idk;
         idk.type = Type::IMMEDIATE;
@@ -118,11 +128,12 @@ struct Arg {
         return idk;
     }
 
-    static Arg Rel32Adr(size_t symbol, int32_t adent) {
+    static Arg Rel32Adr(size_t type, size_t symbol, int32_t adent) {
         Arg idk;
         idk.symbol = symbol;
         idk.type = Type::SYMBOL_RIP_OFF_32;
         idk.offset = adent;
+        idk.symbolType = type;
 
         return idk;
     }
@@ -207,8 +218,8 @@ public:
 
     void writeRegInst(X64Instruction inst, const X64Register& dest, const X64Register& src);
 
-    void writeRegMemInst(X64Instruction inst, const X64Register& dest, const X64Register& subj, int32_t offset) {
-        writeRex(true, dest.isExt(), subj.isExt());
+    void writeRegMemInst(X64Instruction inst, const X64Register& dest, const X64Register& subj, int32_t offset, bool immediate64 = true) {
+        writeRex(immediate64, dest.isExt(), subj.isExt());
         writeRMCode(inst);
 
         someOffsetStuffForMov(dest, subj, offset);
@@ -262,6 +273,13 @@ public:
         writeRex(true, false, dst.isExt());
         pushBack(0xC1);
         writeModRM(X64Register::Five, dst);
+        pushBack(amount);
+    }
+
+    void shiftRImmSigned(const X64Register& dst, u8 amount) {
+        writeRex(true, false, dst.isExt());
+        pushBack(0xC1);
+        writeModRM(X64Register::Seven, dst);
         pushBack(amount);
     }
 
@@ -365,6 +383,16 @@ public:
         return writeImmValue(value);
     }
 
+    void movFast(X64Register dest, uint64_t value) {
+        if (value == 0) {
+            writeRegInst(X64Instruction::xorI, dest, dest);
+        } else if (value <= UINT32_MAX) {
+            mov32(dest, bit_cast<size_t>(value));
+        } else {
+            mov(dest, bit_cast<size_t>(value));
+        }
+    }
+
     void writePtr(const X64Register& dest, const X64Register& src, int32_t offset, SibScale scale = SibScale::One);
 
     ImmSpace mov(const X64Register& dest, size_t value);
@@ -426,6 +454,10 @@ public:
     }
 
     void call(const X64Register& reg);
+
+    void call(const X64Register& reg, i32 offset) {
+        writeRegMemInst(X64Instruction::Call, X64Register::Two, reg, offset, false);
+    }
 
     void callMC(size_t address);
 
@@ -587,6 +619,13 @@ public:
         pushBack(0xC0 | (lhs << 3) | rhs);
     }
 
+    void ucomisd(u8 lhs, u8 rhs, bool is64Bit = true) {
+        if (is64Bit) pushBack(0x66);
+        pushBack(0x0F);
+        pushBack(0x2E);
+        pushBack(0xC0 | (lhs << 3) | rhs);
+    }
+
     void cvttsd2si(X64Register dst, u8 srcFpu) {
         // f2 48 0f 2c c0          cvttsd2si rax,xmm0
         // f2 4c 0f 2c c0          cvttsd2si r8,xmm0
@@ -707,7 +746,7 @@ public:
                         movArgToReg(argReg, arg.reg);
                         break;
                     case Arg::IMMEDIATE:
-                        mov(argReg, arg.immValue);
+                        movFast(argReg, arg.immValue);
                         break;
                     // case Arg::SYMBOL:
                     case Arg::SYMBOL_RIP_OFF_32:
@@ -775,7 +814,7 @@ public:
                         writeStack(currentOffset, movToReg(arg.reg));
                         break;
                     case Arg::IMMEDIATE:
-                        mov(TMP_REG, arg.immValue);
+                        movFast(TMP_REG, arg.immValue);
                         writeStack(currentOffset, TMP_REG);
                         break;
                     // case Arg::SYMBOL:
@@ -813,7 +852,7 @@ public:
                 CALL_REG = movToReg(func.reg);
                 break;
             case Arg::IMMEDIATE:
-                mov(TMP_REG, func.immValue);
+                movFast(TMP_REG, func.immValue);
                 break;
             // case Arg::SYMBOL:
             case Arg::SYMBOL_RIP_OFF_32:
@@ -876,7 +915,7 @@ public:
     }
 
     ImmSpace cmpImm(const X64Register& subj, i32 imm) {
-        writeRex(true, false, subj.isExt());
+        if (subj.isExt()) writeRex(false, false, subj.isExt());
         pushBack(0x81);
         writeModMR(subj, X64Register::Seven);
         return this->writeImmValue(imm);
@@ -965,7 +1004,7 @@ public:
                         movArgToReg(argReg, arg.reg);
                         break;
                     case Arg::IMMEDIATE:
-                        mov(argReg, arg.immValue);
+                        movFast(argReg, arg.immValue);
                         break;
                     // case Arg::SYMBOL:
                     case Arg::SYMBOL_RIP_OFF_32:
@@ -1036,7 +1075,7 @@ public:
                         writeStack(currentOffset, movToReg(arg.reg));
                         break;
                     case Arg::IMMEDIATE:
-                        mov(TMP_REG, arg.immValue);
+                        movFast(TMP_REG, arg.immValue);
                         writeStack(currentOffset, TMP_REG);
                         markClobbered(TMP_REG);
                         break;
@@ -1077,32 +1116,41 @@ public:
         switch (func.type) {
             case Arg::REGISTER:
                 movReg(TMP_REG, movToReg(func.reg));
+                /// invoke function
+                call(CALL_REG);
                 break;
             case Arg::IMMEDIATE:
-                mov(TMP_REG, func.immValue);
+                movFast(TMP_REG, func.immValue);
+                /// invoke function
+                call(CALL_REG);
                 break;
             case Arg::SYMBOL_RIP_OFF_32:
                 movLabel(TMP_REG, func, leaRip(TMP_REG, func.offset));
+                /// invoke function
+                call(CALL_REG);
                 break;
             case Arg::SYMBOL_RIP_VALUE_32:
                 movLabel(TMP_REG, func, relativeRead(TMP_REG, func.offset));
+                /// invoke function
+                call(CALL_REG);
                 break;
             case Arg::REG_OFFSET: {
                 auto srcReg = movToReg(func.reg);
                 auto srcOffset = (srcReg == X64Register::Rsp) ? func.offset + allocatedStack : func.offset;
                 lea(TMP_REG, srcReg, srcOffset);
+                /// invoke function
+                call(CALL_REG);
                 break;
             }
             case Arg::REG_OFFSET_VALUE: {
                 auto srcReg = movToReg(func.reg);
                 auto srcOffset = (srcReg == X64Register::Rsp) ? func.offset + allocatedStack : func.offset;
-                readPtr(TMP_REG, srcReg, srcOffset);
+                // readPtr(TMP_REG, srcReg, srcOffset);
+                /// invoke function
+                call(srcReg, srcOffset);
                 break;
             }
         }
-
-        /// invoke function
-        call(CALL_REG);
 
         /// restore stack if any
         if (allocatedStack != 0) {
@@ -1189,7 +1237,7 @@ public:
                         movReg(dstReg, movToReg(arg.reg));
                         break;
                     case Arg::IMMEDIATE:
-                        mov(dstReg, arg.immValue);
+                        movFast(dstReg, arg.immValue);
                         break;
                     // case Arg::SYMBOL:
                     case Arg::SYMBOL_RIP_OFF_32:
@@ -1252,7 +1300,7 @@ public:
                     writeStack(currentOffset, movToReg(arg.reg));
                     break;
                 case Arg::IMMEDIATE:
-                    mov(TMP_REG, arg.immValue);
+                    movFast(TMP_REG, arg.immValue);
                     writeStack(currentOffset, TMP_REG);
                     break;
                 // case Arg::SYMBOL:
@@ -1289,7 +1337,7 @@ public:
                 CALL_REG = movToReg(func.reg);
                 break;
             case Arg::IMMEDIATE:
-                mov(TMP_REG, func.immValue);
+                movFast(TMP_REG, func.immValue);
                 break;
             // case Arg::SYMBOL:
             case Arg::SYMBOL_RIP_OFF_32:

@@ -402,7 +402,8 @@ int main() {
 
     std::cout << res(13) << std::endl;
 
-    mc.writeRegMemInst(X64Instruction::inc, X64Register::Zero, X64Register::R15, 0);
+    // mc.writeRegMemInst(X64Instruction::Call, X64Register::Two, X64Register::R15, 32);
+    mc.writeRegRipInst(X64Instruction::Call, X64Register::Two, 0xFFFF);
 
 
     // mc.invokeScuffedSYSV(Arg::Imm(0), argz, Arg::StackValue(32, 16), map<X64Register, size_t>{}, [](auto a, auto b) {});

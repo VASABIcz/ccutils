@@ -57,6 +57,29 @@ enum class CmpType: u8 {
     JumpIfEcx0 = 0x64 // not valid for cmov
 };
 
+inline CmpType negateCmp(CmpType c) {
+    switch (c) {
+        case CmpType::Overflow: return CmpType::NotOverflow;
+        case CmpType::NotOverflow: return CmpType::Overflow;
+        case CmpType::Bellow: return CmpType::NotBellow;
+        case CmpType::NotBellow: return CmpType::Bellow;
+        case CmpType::Equal: return CmpType::NotEqual;
+        case CmpType::NotEqual: return CmpType::Equal;
+        case CmpType::BellowOrEqual: return CmpType::Above;
+        case CmpType::Above: return CmpType::BellowOrEqual;
+        case CmpType::Sing: return CmpType::NotSing;
+        case CmpType::NotSing: return CmpType::Sing;
+        case CmpType::Parity: return CmpType::NotParity;
+        case CmpType::NotParity: return CmpType::Parity;
+        case CmpType::Less: return CmpType::GreaterOrEqual;
+        case CmpType::GreaterOrEqual: return CmpType::Less;
+        case CmpType::LessOrEqual: return CmpType::Greater;
+        case CmpType::Greater: return CmpType::LessOrEqual;
+        case CmpType::JumpIfEcx0: TODO();
+    }
+    PANIC();
+}
+
 enum class SimpleX64Instruction {
     ret = 0xC3,
     nop = 0x90,

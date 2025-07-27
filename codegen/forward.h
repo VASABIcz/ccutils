@@ -54,4 +54,6 @@ namespace instructions {
     struct BinaryInstruction;
     template<typename CTX>
     struct Alloca;
+    template<typename CTX>
+    struct Arg;
 }

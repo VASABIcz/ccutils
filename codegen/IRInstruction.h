@@ -46,6 +46,11 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         return dynamic_cast<T*>(this);
     }
 
+    template<template<typename> typename T>
+    T<CTX>* cst() {
+        return dynamic_cast<T<CTX>*>(this);
+    }
+
     template<typename T>
     bool ifIs(std::function<void(T&)> fn) {
         if (is<T>()) {

@@ -16,6 +16,7 @@ add_library(utils OBJECT
         Result.h
         Debuggable.h
         pdo_utils.h
+        BetterArray.h
 )
 
 set_target_properties(utils PROPERTIES LINKER_LANGUAGE CXX)

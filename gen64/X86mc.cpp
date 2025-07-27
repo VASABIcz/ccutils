@@ -386,7 +386,7 @@ ImmSpace X86mc::leaRip(const X64Register& dest, int32_t offset) {
 }
 
 void X86mc::nop() {
-    writeSimple(SimpleX64Instruction::nop);
+    // writeSimple(SimpleX64Instruction::nop);
 }
 
 void X86mc::getStackPtr(const X64Register& reg, int stackOffset) {

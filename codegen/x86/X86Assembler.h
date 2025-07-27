@@ -409,7 +409,7 @@ public:
         /// if handle is register do nothing, else move value to reg
         RegisterHandle ensureReg(RegisterHandle handle) {
             if (not self->allocator.isStack(handle)) {
-                assert(not used.contains(self->allocator.getReg(handle)));
+                // assert(not used.contains(self->allocator.getReg(handle)));
                 used.insert(self->allocator.getReg(handle));
                 return handle;
             }
@@ -423,7 +423,7 @@ public:
 
         RegisterHandle ensureRegWriteback(RegisterHandle handle) {
             if (not self->allocator.isStack(handle)) {
-                assert(not used.contains(self->allocator.getReg(handle)));
+                // assert(not used.contains(self->allocator.getReg(handle)));
                 used.insert(self->allocator.getReg(handle));
                 return handle;
             }
@@ -572,7 +572,7 @@ public:
                 break;
             case Arg::IMMEDIATE:
                 assert(imm.size == 8);
-                requestLabel(*arg.symbol, imm, LABEL_SYMBOL, BaseType::ABSOLUTE_8);
+                requestLabel(*arg.symbol, imm, UNWRAP(arg.symbolType), BaseType::ABSOLUTE_8);
                 break;
             case Arg::REG_OFFSET:
                 break;
@@ -580,11 +580,11 @@ public:
                 break;
             case Arg::SYMBOL_RIP_OFF_32:
                 assert(imm.size == 4);
-                requestLabel(*arg.symbol, imm, LABEL_SYMBOL, BaseType::RIP_REL_4);
+                requestLabel(*arg.symbol, imm, UNWRAP(arg.symbolType), BaseType::RIP_REL_4);
                 break;
             case Arg::SYMBOL_RIP_VALUE_32:
                 assert(imm.size == 4);
-                requestLabel(*arg.symbol, imm, LABEL_SYMBOL, BaseType::RIP_REL_4);
+                requestLabel(*arg.symbol, imm, UNWRAP(arg.symbolType), BaseType::RIP_REL_4);
                 break;
         }
     }
@@ -592,6 +592,10 @@ public:
     void invokeScuffedFastCall(Arg func, span<Arg> args, optional<Arg> ret);
 
     void chadCall(Arg fun, span<Arg> args, optional<Arg> ret);
+
+    void chudCall(Arg fun, std::initializer_list<Arg> args, optional<Arg> ret) {
+        chadCall(fun, std::span<Arg>{(Arg*)args.begin(), args.end()}, ret);
+    }
 
     void jmpCond(size_t label, JumpCondType type, RegisterHandle lhs, RegisterHandle rhs) override;
 
@@ -640,6 +644,10 @@ public:
 
     size_t numRegs() const override {
         return allocator.numRegs();
+    }
+
+    void resurect(Assembler::RegisterHandle handle) override {
+        TODO();
     }
 
     void trap() override {

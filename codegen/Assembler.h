@@ -230,9 +230,10 @@ public:
         return movImmValueToReg(bit_cast<i64>(value));
     }
 
-    virtual RegisterHandle allocateRegister(size_t size) = 0;
-    virtual RegisterHandle allocateStack(size_t size) = 0;
+    virtual RegisterHandle allocateRegister(RegisterHandle size) = 0;
+    virtual RegisterHandle allocateStack(RegisterHandle size) = 0;
     virtual void freeRegister(RegisterHandle handle) = 0;
+    virtual void resurect(RegisterHandle handle) = 0;
 
     virtual size_t numRegs() const = 0;
 

@@ -45,7 +45,7 @@ public:
         return label;
     }
 
-    CodeGen::RegisterHandle allocateRegister(const SSARegisterHandle& tgt) {
+    CodeGen::RegisterHandle allocateRegister(const SSARegisterHandle& tgt, bool check = true) {
         if (!tgt.isValid()) PANIC();
         size_t registerHandle;
         if (this->irGen.getRecord(tgt).isForceStack()) {
@@ -54,12 +54,12 @@ public:
         else {
             registerHandle = assembler.allocateRegister(sizeBytes(tgt));
         }
-        auto handle = internalAllocateRegister(tgt, registerHandle);
+        auto handle = internalAllocateRegister(tgt, registerHandle, check);
         return handle;
     }
 
-    CodeGen::RegisterHandle internalAllocateRegister(SSARegisterHandle tgt, const RegisterHandle registerHandle) {
-        if (alreadyAllocated.contains(tgt)) {
+    CodeGen::RegisterHandle internalAllocateRegister(SSARegisterHandle tgt, const RegisterHandle registerHandle, bool check = true) {
+        if (alreadyAllocated.contains(tgt) && check) {
             println("trying to double allocate: {} at {}", tgt.toString(), currentInstructionCounter);
             assert(false);
         }
@@ -74,6 +74,21 @@ public:
         return registerHandle;
     }
 
+    std::map<SSARegisterHandle, RegisterHandle> getArgMap(const BaseBlock& root) {
+        std::map<SSARegisterHandle, RegisterHandle> mapa;
+
+        auto asmRegs = assembler.getArgHandles();
+        auto ssaRegs = root.getArgRegisters();
+
+        assert(asmRegs.size() == ssaRegs.size());
+
+        for (const auto& [asmReg, ssaReg]: views::zip(asmRegs, ssaRegs)) {
+            mapa[ssaReg] = asmReg;
+        }
+
+        return mapa;
+    }
+
     void initializeArgs(const BaseBlock& root) {
         auto asmRegs = assembler.getArgHandles();
         auto ssaRegs = root.getArgRegisters();
@@ -81,7 +96,7 @@ public:
         assert(asmRegs.size() == ssaRegs.size());
 
         for (const auto& [asmReg, ssaReg]: views::zip(asmRegs, ssaRegs)) {
-            internalAllocateRegister(root.getTarget(ssaReg->id), asmReg);
+            internalAllocateRegister(ssaReg, asmReg);
         }
     }
 
@@ -106,6 +121,7 @@ public:
 
         // here bcs if it would be done inline it would case sigsegv
         for (auto reg : toFree) {
+            // println("DEALOCATING! {}", reg);
             freeRegister(reg);
         }
     }
@@ -176,23 +192,35 @@ public:
 
     Result<void> gen() {
         optimizeAssign<CTX>(irGen);
-        optimizePhis<CTX>(irGen);
+        // optimizePhis<CTX>(irGen);
+        // optimizePhis<CTX>(irGen);
+        // optimizePhis<CTX>(irGen);
+
+        if (false) {
+            println("=== BEFOR FLAT ===");
+            irGen.print();
+            println("=== AFTER FLAT ===");
+        }
 
         flatBlocks = irGen.graph.flattenBlocks();
         currentLiveRanges = liveRanges(flatBlocks);
 
+        fixUnliveRanges();
+        fixupPhiLiveRanges(flatBlocks);
+        clumpLiveRanges();
+
         if (printLiveRanges) doPrintLiveRanges();
 
-        if (printLinearized) doPrintLinearized();
+        // if (printLinearized) doPrintLinearized();
 
-        bool didOptimize = false;
+        // bool didOptimize = false;
 
-        do {
+/*        do {
             didOptimize = false;
             didOptimize |= mergeLiveRanges<CTX>(irGen, currentLiveRanges);
             didOptimize |= removeFallJumps<CTX>(irGen, flatBlocks);
         } while (didOptimize);
-        optimizeCumulativeOps<CTX>(irGen, flatBlocks, currentLiveRanges);
+        optimizeCumulativeOps<CTX>(irGen, flatBlocks, currentLiveRanges);*/
 
         forceStackAlloc<CTX>(irGen);
 
@@ -212,6 +240,44 @@ public:
         }
 
         return {};
+    }
+
+    std::map<SSARegisterHandle, size_t> allocateRegisters() {
+        std::map<SSARegisterHandle, size_t> simulated;
+        std::set<SSARegisterHandle> aliveSet;
+
+        auto argMap = getArgMap(irGen.root());
+
+        auto doAllocate = [&](SSARegisterHandle reg) -> RegisterHandle {
+            if (argMap.contains(reg)) {
+                return argMap[reg];
+            }
+            return assembler.allocateRegister(sizeBytes(reg));
+        };
+
+        for (auto i = 0; i < currentLiveRanges.size(); i++) {
+            for (auto [reg, ranges] : currentLiveRanges) {
+                auto isAlive = ranges[i];
+                // no change ignore
+                if (isAlive == aliveSet.contains(reg)) continue;
+                // becoming alive + was already alive aka resurrected
+                if (isAlive && simulated.contains(reg)) {
+                    TODO()
+                }
+                // just alive
+                if (isAlive) {
+                    auto allocated = doAllocate(reg);
+                    simulated.insert({reg, allocated});
+                    aliveSet.insert(reg);
+                } else {
+                    assert(simulated.contains(reg));
+                    assembler.freeReg(simulated.at(reg));
+                    aliveSet.erase(reg);
+                }
+            }
+        }
+
+        return simulated;
     }
 
     void freeRegister(SSARegisterHandle reg) {
@@ -237,7 +303,7 @@ public:
             return regs.at(reg);
         }
 
-        return allocateRegister(reg);
+        PANIC("trying to get allocated reg {}", reg)
     }
 
     std::optional<CodeGen::RegisterHandle> getReg(std::optional<SSARegisterHandle> reg) {
@@ -250,10 +316,6 @@ public:
         if (not reg.isValid()) return {};
 
         return getReg(reg);
-    }
-
-    void assignPhi(SSARegisterHandle target, SSARegisterHandle source) {
-        assembler.movReg(getRegTotallyUnsafeDontUseThis(target), getReg(source));
     }
 
     void validate() {
@@ -287,9 +349,9 @@ public:
 
     void assignPhis(size_t targetBlock) {
         const auto& block = irGen.getBlock(targetBlock);
-        auto pis = block.getPhis(currentBlock);
+        auto phiFunctions = block.getPhis(currentBlock);
 
-        vector<pair<size_t, pair<size_t, size_t>>> idks;
+        vector<pair<size_t, pair<size_t, size_t>>> atomicPhis;
 
         // move register to temps before actual write
         // this allows us stuff like:
@@ -297,16 +359,17 @@ public:
         // 1:1 := phi 0: 0:1, 1: 1:0
         // FIXME this could be optimized to use only single temp register
         // TODO we would need to find dependency cicles
-        for (auto pi : pis) {
+        for (auto [phiSources, phiTarget] : phiFunctions) {
             // std::cout << "ALLOCATING TMP FOR " << sizeBytes(pi.first) << " - " << pi.first.toString() << std::endl;
-            auto reg = allocateTemp(sizeBytes(pi.first));
-            assembler.movReg(reg, getReg(pi.first), 0, 0, sizeBytes(pi.first));
-            idks.emplace_back(getRegTotallyUnsafeDontUseThis(pi.second), make_pair(reg, sizeBytes(pi.first)));
+            auto tmpPhi = allocateTemp(sizeBytes(phiSources));
+            assembler.movReg(tmpPhi, getReg(phiSources), 0, 0, sizeBytes(phiSources));
+            atomicPhis.emplace_back(getRegTotallyUnsafeDontUseThis(phiTarget), make_pair(tmpPhi, sizeBytes(phiSources)));
         }
 
-        for (auto idk : idks) {
-            assembler.movReg(idk.first, idk.second.first, 0, 0, idk.second.second);
-            freeTemp(idk.second.first);
+        for (auto [targetPhi, other] : atomicPhis) {
+            auto [tmpSourcePhi, size] = other;
+            assembler.movReg(targetPhi, tmpSourcePhi, 0, 0, size);
+            freeTemp(tmpSourcePhi);
         }
     }
 
@@ -329,10 +392,10 @@ public:
             return regs.at(handle);
         }
         if (alreadyAllocated.contains(handle)) {
-            return alreadyAllocated[handle];
+            TODO();
         }
 
-        return getReg(handle);
+        return allocateRegister(handle, false);
     }
 
     auto getBlock(size_t id) -> BaseBlock& {
@@ -354,6 +417,59 @@ public:
         return irGen.getRecord(handle).getType();
     }
 
+    size_t getBasicBlockOffset(size_t id, std::span<size_t> linearized) {
+        size_t acu = 0;
+        for (auto bb : linearized) {
+            if (bb == id) return acu;
+            acu += getBlock(bb).instructions.size();
+        }
+        return 0;
+    }
+
+    void fixUnliveRanges() {
+        irGen.graph.forEachInstruction([&](auto& inst) {
+            auto tgt = inst.target;
+            if (not tgt.isValid()) return;
+            if (currentLiveRanges.contains(tgt)) return;
+
+            currentLiveRanges[tgt] = std::vector<bool>(currentLiveRanges.begin()->second.size());
+        });
+    }
+
+    void fixupPhiLiveRanges(std::span<size_t> linearized) {
+        irGen.graph.forEachInstruction([&](auto& inst) {
+            if (auto phi = inst.template cst<instructions::PhiFunction<CTX>>(); phi) {
+                for (auto [block, value] : phi->getRawVersions()) {
+                    auto offset = getBasicBlockOffset(block, linearized);
+                    auto size = getBlock(block).getInstructions().size();
+                    if (not currentLiveRanges.contains(phi->target)) {
+                        println("JSEM UPPPPPPPPPPPPPLNEEEEEEEEEEE V PICIIIIIIIIIIIIIIIIII {}", phi->target);
+                        return;
+                    }
+                    assert(currentLiveRanges.contains(phi->target));
+                    assert(offset+size-1 < currentLiveRanges.begin()->second.size());
+                    currentLiveRanges[phi->target][offset+size-1] = true;
+                }
+            }
+        });
+    }
+
+    // make register live range contiguous ... this is not optimall but its simple
+    void clumpLiveRanges() {
+        for (auto& range : currentLiveRanges) {
+            auto& set = range.second;
+            auto min = set.size(), max = 0ul;
+            for (auto i = 0UL; i < set.size(); i++) {
+                if (!set[i]) continue;
+                if (i < min) min = i;
+                if (i > max) max = i;
+            }
+
+            for (auto s = min; s <= max; s++) {
+                set[s] = true;
+            }
+        }
+    }
 
     CodeGen(CTX::ASSEMBLER& assembler, CTX::IRGEN& irGen, string name) : assembler(assembler), irGen(irGen), name(name) {}
 
@@ -380,16 +496,21 @@ private:
 
                 // handle allocating of alloca instructions
                 auto alloca = dynamic_cast<instructions::Alloca<CTX>*>(instruction.get());
-                if (alloca != nullptr) {
+                if (alloca != nullptr && alloca->target == reg) {
                     doAlloca(alloca->target, alloca->size);
                     continue;
                 }
-                allocateRegister(reg);
-            }
+                // arg is phony
+                auto arg = dynamic_cast<instructions::Arg<CTX>*>(instruction.get());
+                if (arg != nullptr && arg->target == reg) continue;
 
-            auto tgt = instruction->target;
-            if (tgt.isValid() && not currentLiveRanges.contains(tgt)) {
-                allocateRegister(tgt);
+                auto phi = instruction->template cst<instructions::PhiFunction<CTX>>();
+                if (phi != nullptr && phi->target == reg) {
+                    if (not regs.contains(reg)) allocateRegister(reg);
+                    continue;
+                }
+
+                allocateRegister(reg);
             }
 
             auto oldRegs = this->assembler.numRegs();

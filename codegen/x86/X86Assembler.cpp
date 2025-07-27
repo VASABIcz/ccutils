@@ -275,13 +275,7 @@ size_t X86Assembler::preserveCalleeRegs(const std::function<X64Register::SaveTyp
 
 void X86Assembler::movInt(Assembler::RegisterHandle dest, u64 value, bool isSigned, size_t offsetBytes) {
     auto movToReg = [&](X64Register reg) {
-        if (value == 0) {
-            xorInt(dest, dest, dest);
-        } else if (value <= UINT32_MAX) {
-            mc.mov32(reg, bit_cast<size_t>(value));
-        } else {
-            mc.mov(reg, bit_cast<size_t>(value));
-        }
+        mc.movFast(reg, value);
     };
 
     if (RegAlloc::isStack(dest)) {
