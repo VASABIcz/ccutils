@@ -308,6 +308,18 @@ struct ControlFlowGraph {
         return useCount;
     }
 
+    std::map<SSARegisterHandle, size_t> calcUseCount() {
+        std::map<SSARegisterHandle, size_t> useCount;
+
+        forEachInstruction([&](IRInstruction<CTX>& instruction) {
+            useCount[instruction.target] = 1;
+            for (auto src : instruction.getSources()) {
+                useCount[src] += 1;
+            }
+        });
+        return useCount;
+    }
+
     bool canReach(size_t source, size_t target, unordered_set<size_t>& ignore1) const {
         unordered_set<size_t> visited{ignore1.begin(), ignore1.end()};
         vector<size_t> toVisit;
@@ -687,6 +699,14 @@ struct ControlFlowGraph {
         }
     }
 
+    void forEachInstruction(std::function<void(IRInstruction<CTX>&, CodeBlock<CTX>&)> body) {
+        for (auto& block : this->validNodesConst()) {
+            for (auto& inst : block->getInstructionsMut()) {
+                body(*inst, *block);
+            }
+        }
+    }
+
     void forEachInstruction(std::function<void(IRInstruction<CTX>&)> body) {
         for (auto& block : this->validNodesConst()) {
             for (auto& inst : block->getInstructionsMut()) {
@@ -697,7 +717,7 @@ struct ControlFlowGraph {
 
     IRInstruction<CTX>* resolveInstruction(SSARegisterHandle handle) {
             IRInstruction<CTX>* res = nullptr;
-            forEachInstruction([&](auto& inst) {
+            forEachInstruction([&](auto& inst, auto&) {
                 if (inst.target == handle) res = &inst;
             });
             return res;

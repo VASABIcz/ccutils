@@ -25,7 +25,8 @@ enum class X64Instruction: u8 {
     And = 0x23,
     Test = 0x85,
     Call = 0xFF,
-    inc = 0xFF
+    inc = 0xFF,
+    lea = 0x8D
 };
 
 // FIXME swapped endianness
@@ -119,6 +120,8 @@ enum class X64RegisterType: u8 {
     R15,
 };
 
+namespace x86 {
+
 class X64Register {
 public:
     enum class SaveType {
@@ -187,49 +190,39 @@ public:
         using enum X64RegisterType;
         return value >= R8;
     }
-
-    static constexpr span<X64Register> argRegs() {
-        return mArgRegs;
-    }
-
-#define REEG(nam) const static X64Register nam;
-    REEG(Zero)
-    REEG(One)
-    REEG(Two)
-    REEG(Three)
-    REEG(Four)
-    REEG(Five)
-    REEG(Six)
-    REEG(Seven)
-    REEG(Rax)
-    REEG(Rbx)
-    REEG(Rcx)
-    REEG(Rdx)
-    REEG(Rsi)
-    REEG(Rdi)
-    REEG(Rbp)
-    REEG(Rsp)
-    REEG(R8)
-    REEG(R9)
-    REEG(R10)
-    REEG(R11)
-    REEG(R12)
-    REEG(R13)
-    REEG(R14)
-    REEG(R15)
-#undef REEG
     static array<X64Register, 16> ALL_REGS;
 private:
     X64RegisterType value;
-    static array<X64Register, 6> mArgRegs;// = {{Rdi}, {Rsi}, Rdx, Rcx, R8, R9};
 };
 
-enum SibScale: u8 {
-    One = 0,
-    Two = 1,
-    Four = 2,
-    Eight = 3
-};
+#define REEG(nam) constexpr static X64Register nam = X64RegisterType::nam;
+REEG(Zero)
+REEG(One)
+REEG(Two)
+REEG(Three)
+REEG(Four)
+REEG(Five)
+REEG(Six)
+REEG(Seven)
+REEG(Rax)
+REEG(Rbx)
+REEG(Rcx)
+REEG(Rdx)
+REEG(Rsi)
+REEG(Rdi)
+REEG(Rbp)
+REEG(Rsp)
+REEG(R8)
+REEG(R9)
+REEG(R10)
+REEG(R11)
+REEG(R12)
+REEG(R13)
+REEG(R14)
+REEG(R15)
+#undef REEG
+
+constexpr std::array<x86::X64Register, 16> ALL_REGS = {Rax, Rbx, Rcx, Rdx, Rsi, Rdi, Rbp, Rsp, R8, R9, R10, R11, R12, R13, R14, R15};
 
 inline X64Register::SaveType fastCallSave(const X64Register& reg) {
     using enum X64RegisterType;
@@ -282,3 +275,11 @@ inline X64Register::SaveType sysVSave(const X64Register& reg) {
     }
     unreachable();
 }
+};
+
+enum SibScale: u8 {
+    One = 0,
+    Two = 1,
+    Four = 2,
+    Eight = 3
+};

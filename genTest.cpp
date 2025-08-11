@@ -403,7 +403,15 @@ int main() {
     std::cout << res(13) << std::endl;
 
     // mc.writeRegMemInst(X64Instruction::Call, X64Register::Two, X64Register::R15, 32);
-    mc.writeRegRipInst(X64Instruction::Call, X64Register::Two, 0xFFFF);
+    // mc.writeRegRipInst(X64Instruction::Call, X64Register::Two, 0xFFFF);
+
+
+    for (auto reg : X64Register::ALL_REGS) {
+        for (auto reg1 : X64Register::ALL_REGS) {
+            mc.writeRegMemInst(X64Instruction::mov, reg, reg1, 10);
+            // mc.writeRegMemInst(X64Instruction::mov, reg, reg1, 16);
+        }
+    }
 
 
     // mc.invokeScuffedSYSV(Arg::Imm(0), argz, Arg::StackValue(32, 16), map<X64Register, size_t>{}, [](auto a, auto b) {});

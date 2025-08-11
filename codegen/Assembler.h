@@ -8,9 +8,10 @@
 
 using namespace std;
 
-#define WRAPPED(t) { arithmeticInt(ArithmeticOp::t, dest, left, right); }
-#define WRAPPED_FLOAT(t) { arithmeticFloat(ArithmeticOp::t, FloatingPointType::Float, dest, left, right); }
-#define WRAPPED_DOUBLE(t) { arithmeticFloat(ArithmeticOp::t, FloatingPointType::Double, dest, left, right); }
+#define WRAPPED(t) { arithmeticInt(BinaryOp::t, dest, left, right); }
+#define WRAPPED_FLOAT(t) { arithmeticFloat(BinaryOp::t, FloatingPointType::Float, dest, left, right); }
+#define WRAPPED_DOUBLE(t) { arithmeticFloat(BinaryOp::t, FloatingPointType::Double, dest, left, right); }
+#define WRAPPED_CAST(t, a, b) { castType(dest, value, TypeCast::t, BaseDataType::a, BaseDataType::b); }
 
 enum class JumpCondType {
     EQUALS,
@@ -47,30 +48,106 @@ inline JumpCondType negateType(JumpCondType type) {
 
 class Assembler {
 public:
-    enum class ArithmeticOp {
+    typedef size_t RegisterHandle;
+    enum class BinaryOp {
         ADD,
         SUB,
+
         MUL,
         DIV,
         MOD,
+
         SHR,
         SHL,
+
         OR,
         AND,
-        EQ,
-        GT,
-        LS,
         XOR,
-        NEGATE,
+
+        EQ,
+        NEQ,
+        GT,
         GE,
+        LS,
         LE,
-        NEQ
     };
+
+#define TO_STRING(v) case BinaryOp::v: return #v;
+    static std::string binaryOpToString(Assembler::BinaryOp op) {
+        switch (op) {
+            TO_STRING(ADD)
+            TO_STRING(SUB)
+            TO_STRING(MUL)
+            TO_STRING(DIV)
+            TO_STRING(MOD)
+            TO_STRING(SHR)
+            TO_STRING(SHL)
+            TO_STRING(OR)
+            TO_STRING(AND)
+            TO_STRING(XOR)
+            TO_STRING(EQ)
+            TO_STRING(NEQ)
+            TO_STRING(GT)
+            TO_STRING(GE)
+            TO_STRING(LS)
+            TO_STRING(LE)
+        }
+    }
+#undef TO_STRING
+
+    enum class UnaryOP {
+        NEGATE,
+        NOT,
+    };
+
+    enum class TypeCast {
+        ZERO_EXTEND,
+        SIGN_EXTEND,
+        FLOOR,
+        CEILING,
+        ROUND
+    };
+
+    enum class BaseDataType {
+        I64,
+        I32,
+        I16,
+        I8,
+        U64,
+        U32,
+        U16,
+        U8,
+        F64,
+        F32,
+    };
+
+#define TO_STRING(v) case BaseDataType::v: return #v;
+    static std::string baseTypeToString(Assembler::BaseDataType op) {
+        switch (op) {
+            TO_STRING(I64)
+            TO_STRING(I32)
+            TO_STRING(I16)
+            TO_STRING(I8)
+            TO_STRING(U64)
+            TO_STRING(U32)
+            TO_STRING(U16)
+            TO_STRING(U8)
+            TO_STRING(F64)
+            TO_STRING(F32)
+        }
+    }
+#undef TO_STRING
 
     enum class FloatingPointType {
         Float,
         Double
     };
+
+    size_t jmpLabel = 0;
+
+    virtual void castType(RegisterHandle dst, RegisterHandle src, TypeCast type, BaseDataType dstType, BaseDataType srcType) {
+        TODO()
+    }
 
     void derefChainI(size_t reg, std::initializer_list<int> offsets) {
         derefChain(reg, offsets);
@@ -101,8 +178,6 @@ public:
 
     virtual ~Assembler() = default;
 
-    typedef size_t RegisterHandle;
-
     virtual vector<RegisterHandle> getArgHandles() = 0;
 
     // rets
@@ -127,12 +202,28 @@ public:
     virtual void addressOf(RegisterHandle tgt, RegisterHandle obj) = 0;
     virtual void signExtend(RegisterHandle dst, RegisterHandle src) = 0;
 
-    virtual void doStuff() {
+    virtual void beforeInstruction() {
         // TODO();
     }
 
+    virtual void binaryInst(BinaryOp op, RegisterHandle dest, RegisterHandle left, RegisterHandle right, BaseDataType argType) {
+        switch (argType) {
+            case BaseDataType::F32:
+                arithmeticFloat(op, FloatingPointType::Float, dest, left, right);
+                break;
+            case BaseDataType::F64:
+                arithmeticFloat(op, FloatingPointType::Float, dest, left, right);
+                break;
+            case BaseDataType::I64:
+                arithmeticInt(op, dest, left, right);
+                break;
+            default:
+                PANIC();
+        }
+    }
+
     // int ops
-    virtual void arithmeticInt(ArithmeticOp op, RegisterHandle tgt, RegisterHandle lhs, RegisterHandle rhs) {};
+    virtual void arithmeticInt(BinaryOp op, RegisterHandle tgt, RegisterHandle lhs, RegisterHandle rhs) {};
     virtual void subInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(SUB);
     virtual void addInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(ADD);
     virtual void mulInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(MUL);
@@ -141,7 +232,6 @@ public:
     virtual void neqInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(NEQ);
     virtual void gtInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(GT);
     virtual void lessInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(LS);
-    virtual void negateInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(NEGATE);
     virtual void xorInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(XOR);
     virtual void andInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(AND);
     virtual void orInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(OR);
@@ -151,12 +241,12 @@ public:
     virtual void geInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(GE);
     virtual void leInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED(LE);
 
-    void notBits(RegisterHandle dst, RegisterHandle src) {
+    virtual void unaryOp(RegisterHandle dst, RegisterHandle src, UnaryOP op) {
         TODO();
     }
 
     // float ops
-    virtual void arithmeticFloat(ArithmeticOp op, FloatingPointType type, RegisterHandle tgt, RegisterHandle lhs, RegisterHandle rhs) {};
+    virtual void arithmeticFloat(BinaryOp op, FloatingPointType type, RegisterHandle tgt, RegisterHandle lhs, RegisterHandle rhs) {};
     virtual void subFloat(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED_FLOAT(SUB);
     virtual void addFloat(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED_FLOAT(ADD);
     virtual void mulFloat(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED_FLOAT(MUL);
@@ -180,12 +270,10 @@ public:
     virtual void neqDouble(RegisterHandle dest, RegisterHandle left, RegisterHandle right) WRAPPED_DOUBLE(NEQ);
 
     // type conversion
-    virtual void int2f64(RegisterHandle dest, RegisterHandle value) = 0;
-    virtual void f64ToInt(RegisterHandle dest, RegisterHandle value) = 0;
-    virtual void f32ToF64(RegisterHandle dest, RegisterHandle value) = 0;
-    virtual void f64ToF32(RegisterHandle dest, RegisterHandle value) = 0;
-
-    size_t jmpLabel = 0;
+    virtual void int2f64(RegisterHandle dest, RegisterHandle value) WRAPPED_CAST(ROUND, F64, I64);
+    virtual void f64ToInt(RegisterHandle dest, RegisterHandle value) WRAPPED_CAST(ROUND, I64, F64);
+    virtual void f32ToF64(RegisterHandle dest, RegisterHandle value) WRAPPED_CAST(ROUND, F64, F32);
+    virtual void f64ToF32(RegisterHandle dest, RegisterHandle value) WRAPPED_CAST(ROUND, F32, F64);
 
     // control flow
     virtual size_t allocateJmpLabel() {
@@ -206,14 +294,14 @@ public:
 
     virtual void dumpHints(std::string_view s) {}
 
-    ArithmeticOp jmpToArithmetic(JumpCondType type) {
+    BinaryOp jmpToArithmetic(JumpCondType type) {
         switch (type) {
-            case JumpCondType::EQUALS: return ArithmeticOp::EQ;
-            case JumpCondType::NOT_EQUALS: return ArithmeticOp::NEQ;
-            case JumpCondType::GREATER: return ArithmeticOp::GT;
-            case JumpCondType::GREATER_OR_EQUAL: return ArithmeticOp::GE;
-            case JumpCondType::LESS: return ArithmeticOp::LS;
-            case JumpCondType::LESS_OR_EQUAL: return ArithmeticOp::LE;
+            case JumpCondType::EQUALS: return BinaryOp::EQ;
+            case JumpCondType::NOT_EQUALS: return BinaryOp::NEQ;
+            case JumpCondType::GREATER: return BinaryOp::GT;
+            case JumpCondType::GREATER_OR_EQUAL: return BinaryOp::GE;
+            case JumpCondType::LESS: return BinaryOp::LS;
+            case JumpCondType::LESS_OR_EQUAL: return BinaryOp::LE;
         }
         UNREACHABLE();
     }
@@ -240,6 +328,5 @@ public:
     virtual void print() const = 0;
     virtual void instructionNumberHint(size_t id) {}
     virtual void nop() = 0;
-    virtual void trap() {
-    }
+    virtual void trap() {}
 };

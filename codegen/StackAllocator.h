@@ -20,6 +20,13 @@ struct StackAllocator {
         return stack.size();
     }
 
+    void clear() {
+        for (auto i = 0UL; i < stack.size(); i++) {
+            stack[i] = false;
+        }
+        stackAllocations.clear();
+    }
+
     void forceReserve(size_t nBytes) {
         for (auto i = 0u; i < nBytes; i++) {
             stack.push_back(false);
@@ -27,9 +34,21 @@ struct StackAllocator {
     }
 
     size_t getStackOffset(size_t handle) const {
-        assert(this->stackAllocations.contains(handle));
+        // assert(this->stackAllocations.contains(handle));
         return handle & ~MOST_SIGNIFICANT_BIT;
     }
+
+    void allocateStackRange(auto start, auto size) {
+        for (auto i: views::iota(start, start + size)) {
+            stack[i] = true;
+        }
+    };
+
+    void deAllocateStackRange(auto start, auto size) {
+        for (auto i: views::iota(start, start + size)) {
+            stack[i] = false;
+        }
+    };
 
     size_t allocateStack(size_t amountBytes) {
         const auto canAllocateStackRange = [&](auto start, auto size) {
@@ -37,11 +56,6 @@ struct StackAllocator {
                 if (stack[i]) return false;
             }
             return true;
-        };
-        const auto allocateStackRange = [&](auto start, auto size) {
-            for (auto i: views::iota(start, start + size)) {
-                stack[i] = true;
-            }
         };
         const auto allocateStackHandle = [&](auto stackOffset) {
             auto handle = stackOffset | MOST_SIGNIFICANT_BIT;
@@ -73,10 +87,7 @@ struct StackAllocator {
 
     void freeStack(size_t handle) {
         auto rawOffset = getStackOffset(handle);
-        // println("[REG] freeing stack {}-{}", rawOffset, amountBytes);
-        for (auto i: views::iota(rawOffset, rawOffset + stackSize(handle))) {
-            stack[i] = false;
-        }
+        deAllocateStackRange(rawOffset, stackSize(handle));
         stackAllocations.erase(handle);
     }
 
@@ -87,7 +98,7 @@ struct StackAllocator {
         println("=== end alloc ===");
     }
 
-    static bool isStack(size_t handle) {
+    bool isStack(size_t handle) const {
         // is the most significant bit set?
         return (handle & MOST_SIGNIFICANT_BIT) == MOST_SIGNIFICANT_BIT;
     }

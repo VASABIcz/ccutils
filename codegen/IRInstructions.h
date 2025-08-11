@@ -11,20 +11,23 @@
 
 using namespace std;
 
-/*template<typename ASSEMBLER>
-using AssemblerMethodRef = void(ASSEMBLER::*)(size_t, size_t, size_t);*/
-
-// template<typename CTX>struct className: public IR2Instruction<name, CTX> { PUB_VIRTUAL_COPY(className) using IR2Instruction<name, CTX>::IR2Instruction; void generate(CTX::GEN& gen) override {auto tgt = gen.getReg(this->target);auto l = gen.getReg(this->lhs);auto r = gen.getReg(this->rhs);gen.assembler.func(tgt, l, r);}};
-
-
 namespace instructions {
     template<typename CTX>
     struct BinaryInstruction: public IR2Instruction2<CTX> {
-        BinaryInstruction(SSARegisterHandle tgt, SSARegisterHandle lhs, SSARegisterHandle rhs, bool isComutative, std::string name): IR2Instruction2<CTX>(tgt, lhs, rhs, name), isComutative(isComutative) {}
+        Assembler::BinaryOp op;
+        Assembler::BaseDataType type;
 
-        // OMG meth is ekshulay useful?
-        // nvm
-        bool isComutative = false;
+        BinaryInstruction(
+                SSARegisterHandle tgt,
+                SSARegisterHandle lhs,
+                SSARegisterHandle rhs,
+                Assembler::BinaryOp op,
+                Assembler::BaseDataType type
+        ): IR2Instruction2<CTX>(tgt, lhs, rhs, stringify("{}_{}", Assembler::baseTypeToString(type), Assembler::binaryOpToString(op))), op(op), type(type) {}
+
+        void generate(CTX::GEN& ctx) override {
+            ctx.assembler.binaryInst();
+        }
     };
 
     template<typename CTX>
@@ -48,51 +51,6 @@ namespace instructions {
 
         bool isTerminal() const override { return true; }
     };
-
-#define SIMPLE_INSTR(_CLASS_NAME, name, ptr, isCom) template<typename CTX>struct _CLASS_NAME: public BinaryInstruction<CTX> { PUB_VIRTUAL_COPY(_CLASS_NAME) _CLASS_NAME(SSARegisterHandle tgt, SSARegisterHandle lhs, SSARegisterHandle rhs): BinaryInstruction<CTX>(tgt, lhs, rhs, isCom, name) {}; void generate(CTX::GEN& gen) override {auto tgt = gen.getReg(this->target);auto l = gen.getReg(this->lhs);auto r = gen.getReg(this->rhs);gen.assembler.ptr(tgt, l, r);}};
-    // int stuff IDK
-    SIMPLE_INSTR(IntAdd, "int_add", addInt, true) // opt+com
-    SIMPLE_INSTR(IntSub, "int_sub", subInt, false) // opt
-    SIMPLE_INSTR(IntLess, "int_less", lessInt, false) // opt
-    SIMPLE_INSTR(IntGt, "int_gt", gtInt, false) // opt
-    SIMPLE_INSTR(IntMul, "int_mul", mulInt, true) // opt+com
-    SIMPLE_INSTR(IntDiv, "int_div", divInt, false) // opt
-    SIMPLE_INSTR(IntMod, "int_mod", modInt, false) // opt
-    SIMPLE_INSTR(IntEquals, "int_eq", eqInt, true) // opt+com
-    SIMPLE_INSTR(IntNotEquals, "int_neq", neqInt, true) // opt+com
-    SIMPLE_INSTR(IntXor, "int_xor", xorInt, true) // opt+com
-    SIMPLE_INSTR(IntGe, "int_ge", geInt, false) // opt
-    SIMPLE_INSTR(IntLe, "int_le", leInt, false) // opt
-    // bitwise
-    SIMPLE_INSTR(IntAnd, "int_and", andInt, true) // opt+com
-    SIMPLE_INSTR(IntOr, "int_or", orInt, true) // opt+com
-    SIMPLE_INSTR(IntShr, "int_shr", shrInt, false) // opt
-    SIMPLE_INSTR(IntShl, "int_shl", shlInt, false) // opt
-
-    // f32
-    SIMPLE_INSTR(FloatAdd, "f32_add", addFloat, true)
-    SIMPLE_INSTR(FloatSub, "f32_sub", subFloat, false)
-    SIMPLE_INSTR(FloatMul, "f32_mul", mulFloat, true)
-    SIMPLE_INSTR(FloatDiv, "f32_div", divFloat, false)
-    SIMPLE_INSTR(FloatEq, "f32_eq", eqFloat, true)
-    SIMPLE_INSTR(FloatNotEquals, "f32_neq", neqFloat, true)
-    SIMPLE_INSTR(FloatGt, "f32_gt", gtFloat, false)
-    SIMPLE_INSTR(FloatLess, "f32_ls", lessFloat, false)
-    SIMPLE_INSTR(FloatGE, "f32_ge", geFloat, false)
-    SIMPLE_INSTR(FloatLE, "f32_le", leFloat, false)
-
-    // f64
-    SIMPLE_INSTR(DoubleAdd, "f64_add", addDouble, true)
-    SIMPLE_INSTR(DoubleSub, "f64_sub", subDouble, false)
-    SIMPLE_INSTR(DoubleMul, "f64_mul", mulDouble, true)
-    SIMPLE_INSTR(DoubleDiv, "f64_div", divDouble, false)
-    SIMPLE_INSTR(DoubleEq, "f64_eq", eqDouble, true)
-    SIMPLE_INSTR(DoubleNotEq, "f64_neq", neqDouble, true)
-    SIMPLE_INSTR(DoubleGt, "f64_gt", gtDouble, false)
-    SIMPLE_INSTR(DoubleLess, "f64_ls", lessDouble, false)
-    SIMPLE_INSTR(DoubleGE, "f64_ge", geDouble, false)
-    SIMPLE_INSTR(DoubleLE, "f64_le", leDouble, false)
-#undef SIMPLE_INSTR
 
     template<typename CTX>
     struct BoolNot: public IR1Instruction<"bool_not", CTX> {
@@ -439,10 +397,12 @@ namespace instructions {
     template<typename CTX>
     struct Jump: public IRBaseInstruction<size_t, "jump", CTX> {
     PUB_VIRTUAL_COPY(Jump)
+        bool shouldAssign = true;
+
         Jump(size_t value): IRBaseInstruction<size_t, "jump", CTX>(SSARegisterHandle::invalid(), value) {}
 
         void generate(CTX::GEN& ctx) override {
-            ctx.assignPhis(this->value);
+            if (shouldAssign) ctx.assignPhis(this->value);
 
             ctx.jmpBlock(this->value);
         }

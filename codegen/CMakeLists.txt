@@ -17,6 +17,9 @@ add_library(vi_codegen OBJECT
         BinaryOutput.cpp
         BinaryOutput.h
         optimizations.h
+        allocators/Allocator.h
+        allocators/BetterAllocator.h
+        LiveRanges.h
 )
 
 add_subdirectory(../gen64 build)
@@ -49,7 +52,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 # Now build our tools
-add_executable(llvm_toy llvm/llvm_toy.cpp)
+add_executable(llvm_toy llvm/llvm_toy.cpp
+        allocators/SimpleAllocator.h
+        allocators/NewAllocator.h)
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
 llvm_map_components_to_libnames(llvm_libs support core irreader)

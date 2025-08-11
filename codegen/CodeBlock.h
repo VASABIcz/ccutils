@@ -269,6 +269,14 @@ public:
         instructions.emplace_back(std::move(instruction));
     }
 
+    size_t getId(IRInstruction<CTX>* instruction) const {
+        TODO();
+    }
+
+    void insert(unique_ptr<IRInstruction<CTX>> instruction, size_t id) {
+        instructions.insert(instructions.begin()+id, std::move(instruction));
+    }
+
     SSARegisterHandle pushRegister(unique_ptr<typename CTX::REG> reg) {
         reg->id = registers.size();
         reg->setBlockId(id());

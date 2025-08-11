@@ -9,8 +9,6 @@
 
 // TODO mov cache
 
-typedef X64Register Reg;
-
 void insertBytes(vector<u8>& target, const vector<u8>& source, size_t offset) {
     target.insert(target.begin()+offset, source.begin(), source.end());
 }
@@ -126,36 +124,36 @@ void X86Assembler::generateRet() {
 void X86Assembler::generateRet(RegisterHandle value) {
     if constexpr (arch::isUnixLike()) {
         if (retSize <= REG_SIZE) {
-            movHandleToReg(X64Register::Rax, value);
+            movHandleToReg(x86::Rax, value);
         } else if (retSize <= REG_SIZE*2) {
             assert(allocator.isStack(value));
 
-            mc.readMem(X64Register::Rax, X64Register::Rsp, allocator.getStackOffset(value), REG_SIZE);
-            mc.readMem(X64Register::Rdx, X64Register::Rsp, allocator.getStackOffset(value)+8, allocator.sizeOf(value)-REG_SIZE);
+            mc.readMem(x86::Rax, x86::Rsp, allocator.getStackOffset(value), REG_SIZE);
+            mc.readMem(x86::Rdx, x86::Rsp, allocator.getStackOffset(value)+8, allocator.sizeOf(value)-REG_SIZE);
         } else {
             assert(allocator.isStack(value));
 
             // WHY ARE WE WRITING TO RDI ?????????
             // FIXME bcs we allocated the reg and never freed it OR didnt save it to stack to lower reg pressure
             // FIXME preserve it onto stack
-            mc.movReg(X64Register::Rax, X64Register::Rdi);
+            mc.movReg(x86::Rax, x86::Rdi);
 
             // rcx chosen just bcs its caller saved reg
-            mc.garbageMemCpy(X64Register::Rax, X64Register::Rsp, allocator.stackSize(value), X64Register::Rcx, static_cast<int>(allocator.getStackOffset(value)));
+            mc.garbageMemCpy(x86::Rax, x86::Rsp, allocator.stackSize(value), x86::Rcx, static_cast<int>(allocator.getStackOffset(value)));
         }
     } else if constexpr (arch::isWindows()) {
         if (retSize <= REG_SIZE) {
-            movHandleToReg(X64Register::Rax, value);
+            movHandleToReg(x86::Rax, value);
         } else {
             assert(allocator.isStack(value));
 
             // WHY ARE WE WRITING TO RDI ?????????
             // FIXME bcs we allocated the reg and never freed it OR didnt save it to stack to lower reg pressure
             // FIXME preserve it onto stack
-            mc.movReg(X64Register::Rax, X64Register::Rcx);
+            mc.movReg(x86::Rax, x86::Rcx);
 
             // rcx chosen just bcs its caller saved reg
-            mc.garbageMemCpy(X64Register::Rax, X64Register::Rsp, allocator.stackSize(value), X64Register::Rcx, static_cast<int>(allocator.getStackOffset(value)));
+            mc.garbageMemCpy(x86::Rax, x86::Rsp, allocator.stackSize(value), x86::Rcx, static_cast<int>(allocator.getStackOffset(value)));
         }
     } else {
         static_assert("unsuported arch");
@@ -165,14 +163,14 @@ void X86Assembler::generateRet(RegisterHandle value) {
 }
 
 void X86Assembler::jmpLabelTrue(RegisterHandle cond, size_t label) {
-    withRegs([&](X64Register condReg) {
+    withRegs([&](x86::X64Register condReg) {
         mc.makeIsTrue(condReg);
     }, cond);
     writeJmp(CmpType::Equal, label);
 }
 
 void X86Assembler::jmpLabelFalse(RegisterHandle cond, size_t label) {
-    withRegs([&](X64Register condReg) {
+    withRegs([&](x86::X64Register condReg) {
         mc.makeIsTrue(condReg);
     }, cond);
     writeJmp(CmpType::NotEqual, label);
@@ -198,11 +196,11 @@ X86Assembler::Assembler::RegisterHandle X86Assembler::allocateRegister(size_t si
 
 void X86Assembler::readMem(Assembler::RegisterHandle tgt, Assembler::RegisterHandle obj, size_t offset, size_t amount) {
     // mov tgt, [obj+offset]
-    withRegs([&](X64Register tgtReg, X64Register objReg) {
+    withRegs([&](x86::X64Register tgtReg, x86::X64Register objReg) {
         if (amount > 8) {
             assert(allocator.isStack(tgt));
 
-            mc.garbageMemCpy(X64Register::Rsp, objReg, amount, tgtReg, static_cast<int>(offset), static_cast<int>(allocator.getStackOffset(tgt)));
+            mc.garbageMemCpy(x86::Rsp, objReg, amount, tgtReg, static_cast<int>(offset), static_cast<int>(allocator.getStackOffset(tgt)));
             return;
         }
 
@@ -215,11 +213,11 @@ void X86Assembler::readMem(Assembler::RegisterHandle tgt, Assembler::RegisterHan
 
 void X86Assembler::writeMem(Assembler::RegisterHandle obj, Assembler::RegisterHandle value, size_t offset, size_t amount) {
     // mov [obj+offset], value
-    withRegs([&](X64Register objReg, X64Register valueReg) {
+    withRegs([&](x86::X64Register objReg, x86::X64Register valueReg) {
         if (amount > 8) {
             assert(allocator.isStack(value));
 
-            mc.garbageMemCpy(objReg, X64Register::Rsp, amount, valueReg, static_cast<int>(allocator.getStackOffset(value)), static_cast<int>(offset));
+            mc.garbageMemCpy(objReg, x86::Rsp, amount, valueReg, static_cast<int>(allocator.getStackOffset(value)), static_cast<int>(offset));
             return;
         }
 
@@ -227,7 +225,7 @@ void X86Assembler::writeMem(Assembler::RegisterHandle obj, Assembler::RegisterHa
     }, obj, value);
 }
 
-size_t X86Assembler::preserveCalleeRegs(const std::function<X64Register::SaveType(X64Register)>& save) {
+size_t X86Assembler::preserveCalleeRegs(const std::function<x86::X64Register::SaveType(x86::X64Register)>& save) {
     // println("labels before: {}", labels);
     vector<u8> temp;
     X86mc tempAsm(temp);
@@ -241,7 +239,7 @@ size_t X86Assembler::preserveCalleeRegs(const std::function<X64Register::SaveTyp
 
     // generate preservation code
     for (const auto& reg : clobberedRegs) {
-        if (save(reg) != X64Register::SaveType::Callee) continue;
+        if (save(reg) != x86::X64Register::SaveType::Callee) continue;
 
         tempAsm.writeStack(static_cast<int>(acumulatedStackSize), reg);
         acumulatedStackSize += REG_SIZE;
@@ -259,7 +257,7 @@ size_t X86Assembler::preserveCalleeRegs(const std::function<X64Register::SaveTyp
 
         auto acumulatedStackSize2 = stackSize;
         for (const auto& reg : clobberedRegs) {
-            if (save(reg) != X64Register::SaveType::Callee) continue;
+            if (save(reg) != x86::X64Register::SaveType::Callee) continue;
 
             tempAsm.readStack(static_cast<int>(acumulatedStackSize2), reg);
 
@@ -274,12 +272,12 @@ size_t X86Assembler::preserveCalleeRegs(const std::function<X64Register::SaveTyp
 }
 
 void X86Assembler::movInt(Assembler::RegisterHandle dest, u64 value, bool isSigned, size_t offsetBytes) {
-    auto movToReg = [&](X64Register reg) {
+    auto movToReg = [&](x86::X64Register reg) {
         mc.movFast(reg, value);
     };
 
-    if (RegAlloc::isStack(dest)) {
-        withTempReg([&](X64Register reg) -> void {
+    if (allocator.isStack(dest)) {
+        withTempReg([&](x86::X64Register reg) -> void {
             movToReg(reg);
 
             movRegToStack(dest, static_cast<int>(offsetBytes), reg);
@@ -299,14 +297,14 @@ void X86Assembler::movReg(Assembler::RegisterHandle dest, Assembler::RegisterHan
         return;
     }
 
-    if (!RegAlloc::isStack(dest) && !RegAlloc::isStack(src)) { // Reg2Reg
+    if (!allocator.isStack(dest) && !allocator.isStack(src)) { // Reg2Reg
         auto srcReg = allocator.getReg(src);
         auto dstReg = allocator.getReg(dest);
 
         if (srcOffsetBytes == 0 && destOffsetBytes == 0) {
             movRegToReg(dstReg, srcReg, amount);
         } else {
-            withTempReg([&](X64Register tmp) {
+            withTempReg([&](x86::X64Register tmp) {
                 // FIXME
                 // copy value reg to tmp
                 mc.movReg(tmp, srcReg);
@@ -322,12 +320,12 @@ void X86Assembler::movReg(Assembler::RegisterHandle dest, Assembler::RegisterHan
         }
         return;
     }
-    if (RegAlloc::isStack(dest) && !RegAlloc::isStack(src)) { // Reg2Stack
+    if (allocator.isStack(dest) && !allocator.isStack(src)) { // Reg2Stack
         assert(srcOffsetBytes == 0);
         movRegToStack(dest, destOffsetBytes, allocator.getReg(src));
         return;
     }
-    if (!RegAlloc::isStack(dest) && RegAlloc::isStack(src)) { // Stack2Reg
+    if (!allocator.isStack(dest) && allocator.isStack(src)) { // Stack2Reg
         assert(destOffsetBytes == 0);
         movStackToReg(allocator.getReg(dest), src, srcOffsetBytes);
         return;
@@ -335,20 +333,20 @@ void X86Assembler::movReg(Assembler::RegisterHandle dest, Assembler::RegisterHan
 
     assert(isAligned(amount, REG_SIZE));
 
-    withTempReg([&](Reg a){
-        mc.garbageMemCpy(X64Register::Rsp, X64Register::Rsp, amount, a, static_cast<int>(allocator.getStackOffset(src) + srcOffsetBytes), static_cast<int>(allocator.getStackOffset(dest) + destOffsetBytes));
+    withTempReg([&](x86::X64Register a){
+        mc.garbageMemCpy(x86::Rsp, x86::Rsp, amount, a, static_cast<int>(allocator.getStackOffset(src) + srcOffsetBytes), static_cast<int>(allocator.getStackOffset(dest) + destOffsetBytes));
     }, {});
 }
 
 void X86Assembler::divInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
-    withSpecificReg(X64Register::Rax, [&] {
-        withSpecificReg(X64Register::Rdx, [&] {
-            movHandleToReg(X64Register::Rax, left);
+    withSpecificReg(x86::Rax, [&] {
+        withSpecificReg(x86::Rdx, [&] {
+            movHandleToReg(x86::Rax, left);
             mc.cqo();
-            withRegs([&](X64Register rhsReg) {
+            withRegs([&](x86::X64Register rhsReg) {
                 mc.signedDivide(rhsReg);
             }, right);
-            movRegToHandle(dest, X64Register::Rax);
+            movRegToHandle(dest, x86::Rax);
         });
     });
 }
@@ -356,9 +354,9 @@ void X86Assembler::divInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
 void X86Assembler::shlInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
     movReg(dest, left);
 
-    withSpecificReg(X64Register::Rcx, [&] {
-        movHandleToReg(X64Register::Rcx, right);
-        withRegs([&](X64Register dstReg) {
+    withSpecificReg(x86::Rcx, [&] {
+        movHandleToReg(x86::Rcx, right);
+        withRegs([&](x86::X64Register dstReg) {
             mc.shiftLeftByCl(dstReg);
             movRegToHandle(dest, dstReg);
         }, dest);
@@ -368,9 +366,9 @@ void X86Assembler::shlInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
 void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
     movReg(dest, left);
 
-    withSpecificReg(X64Register::Rcx, [&] {
-        movHandleToReg(X64Register::Rcx, right);
-        withRegs([&](X64Register dstReg) {
+    withSpecificReg(x86::Rcx, [&] {
+        movHandleToReg(x86::Rcx, right);
+        withRegs([&](x86::X64Register dstReg) {
             mc.shiftRightByCl(dstReg);
             movRegToHandle(dest, dstReg);
         }, dest);
@@ -378,14 +376,14 @@ void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
 }
 
 void X86Assembler::modInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) {
-    withSpecificReg(X64Register::Rax, [&] {
-        withSpecificReg(X64Register::Rdx, [&] {
-            movHandleToReg(X64Register::Rax, left);
+    withSpecificReg(x86::Rax, [&] {
+        withSpecificReg(x86::Rdx, [&] {
+            movHandleToReg(x86::Rax, left);
             mc.cqo();
-            withRegs([&](X64Register rhsReg) {
+            withRegs([&](x86::X64Register rhsReg) {
                 mc.signedDivide(rhsReg);
             }, right);
-            movRegToHandle(dest, X64Register::Rdx);
+            movRegToHandle(dest, x86::Rdx);
         });
     });
 }
@@ -394,16 +392,16 @@ void X86Assembler::nop() {
     mc.nop();
 }
 
-void X86Assembler::garbageMemCpy(X64Register ptrReg, size_t stackOffset, size_t stackSize) {
+void X86Assembler::garbageMemCpy(x86::X64Register ptrReg, size_t stackOffset, size_t stackSize) {
     // FIXME assert(isAligned(stackSize, REG_SIZE));
 
-    withTempReg([&](X64Register tmp) {
-        mc.garbageMemCpy(ptrReg, X64Register::Rsp, stackSize, tmp, static_cast<int>(stackOffset));
+    withTempReg([&](x86::X64Register tmp) {
+        mc.garbageMemCpy(ptrReg, x86::Rsp, stackSize, tmp, static_cast<int>(stackOffset));
     }, {&ptrReg, 1});
 }
 
 size_t X86Assembler::writeStack(size_t offset, Assembler::RegisterHandle handle) {
-    if (not RegAlloc::isStack(handle)) {
+    if (not allocator.isStack(handle)) {
         auto r = allocator.getReg(handle);
 
         mc.writeStack(offset, r);
@@ -412,8 +410,8 @@ size_t X86Assembler::writeStack(size_t offset, Assembler::RegisterHandle handle)
 
     auto amount = allocator.stackSize(handle);
     auto srcOffset = allocator.getStackOffset(handle);
-    // garbageMemCpy(X64Register::Rsp, srcOffset, amount); // FIXME WTF is this
-    garbageMemCpy(X64Register::Rsp, offset, X64Register::Rsp, srcOffset, amount);
+    // garbageMemCpy(x86::Rsp, srcOffset, amount); // FIXME WTF is this
+    garbageMemCpy(x86::Rsp, offset, x86::Rsp, srcOffset, amount);
     return amount;
 }
 
@@ -433,7 +431,7 @@ X86Assembler::X86Assembler(span<size_t> argSizes, size_t retSize) : mc(bytes), a
     }
 }
 
-void X86Assembler::withSpecificReg(const X64Register& reg, const function<void()>& callback) {
+void X86Assembler::withSpecificReg(const x86::X64Register& reg, const function<void()>& callback) {
     // GOOD we can aquire it
     if (!allocator.isAcquired(reg)) {
         allocator.acquireSpecific(reg);
@@ -459,8 +457,8 @@ void X86Assembler::withSpecificReg(const X64Register& reg, const function<void()
     mc.pop(reg);
 }
 
-void X86Assembler::movHandleToReg(const X64Register& dst, Assembler::RegisterHandle src) {
-    if (RegAlloc::isStack(src)) {
+void X86Assembler::movHandleToReg(const x86::X64Register& dst, Assembler::RegisterHandle src) {
+    if (allocator.isStack(src)) {
         movStackToReg(dst, src);
     }
     else {
@@ -468,8 +466,8 @@ void X86Assembler::movHandleToReg(const X64Register& dst, Assembler::RegisterHan
     }
 }
 
-void X86Assembler::movToArgRegVIPLCallingConvention(const X64Register& dst, Assembler::RegisterHandle src, const map<X64Register, size_t>& preserved, bool moveAsIs) {
-    if (not RegAlloc::isStack(src)) {
+void X86Assembler::movToArgRegVIPLCallingConvention(const x86::X64Register& dst, Assembler::RegisterHandle src, const map<x86::X64Register, size_t>& preserved, bool moveAsIs) {
+    if (not allocator.isStack(src)) {
         auto r = allocator.getReg(src);
 
         // is reg in stack?
@@ -508,20 +506,20 @@ void X86Assembler::instructionNumberHint(size_t id) {
     auto num = stringToLong(str, err, 16);
 
     // TODO use one line instruction like mov [Rsp+40], 0x21
-    mc.push(X64Register::Rax);
-    mc.mov(X64Register::Rax, num);
-    mc.pop(X64Register::Rax);*/
+    mc.push(x86::Rax);
+    mc.mov(x86::Rax, num);
+    mc.pop(x86::Rax);*/
 }
 
-size_t X86Assembler::dumpToStack(X64Register reg) {
+size_t X86Assembler::dumpToStack(x86::X64Register reg) {
     auto handle = allocator.allocateStack(REG_SIZE);
     mc.writeStack(allocator.getStackOffset(handle), reg);
 
     return handle;
 }
 
-X64Register X86Assembler::idk(size_t handle, set<X64Register>& clobered, vector<pair<X64Register, optional<size_t>>>& toRestore) {
-    if (!RegAlloc::isStack(handle)) {
+x86::X64Register X86Assembler::idk(size_t handle, set<x86::X64Register>& clobered, vector<pair<x86::X64Register, optional<size_t>>>& toRestore) {
+    if (!allocator.isStack(handle)) {
         auto tmp = allocator.getReg(handle);
         clobered.insert(tmp);
 
@@ -547,7 +545,7 @@ X64Register X86Assembler::idk(size_t handle, set<X64Register>& clobered, vector<
     return reg;
 }
 
-X64Register X86Assembler::idk2(set<X64Register>& clobered, vector<pair<X64Register, optional<size_t>>>& toRestore) {
+x86::X64Register X86Assembler::idk2(set<x86::X64Register>& clobered, vector<pair<x86::X64Register, optional<size_t>>>& toRestore) {
     auto [reg, isClobered] = allocator.allocateEvenClobered(clobered);
 
     if (isClobered) {
@@ -560,7 +558,7 @@ X64Register X86Assembler::idk2(set<X64Register>& clobered, vector<pair<X64Regist
     return reg;
 }
 
-void X86Assembler::restoreRegState(vector<pair<X64Register, optional<size_t>>>& regs) {
+void X86Assembler::restoreRegState(vector<pair<x86::X64Register, optional<size_t>>>& regs) {
     for (const auto& [originalReg, stackHandle] : regs) {
         if (not stackHandle.has_value()) {
             allocator.freeReg(originalReg);
@@ -572,8 +570,8 @@ void X86Assembler::restoreRegState(vector<pair<X64Register, optional<size_t>>>& 
     }
 }
 
-void X86Assembler::movRegToHandle(size_t dst, X64Register src) {
-    if (RegAlloc::isStack(dst)) {
+void X86Assembler::movRegToHandle(size_t dst, x86::X64Register src) {
+    if (allocator.isStack(dst)) {
         movRegToStack(dst, 0, src);
     }
     else {
@@ -584,7 +582,7 @@ void X86Assembler::movRegToHandle(size_t dst, X64Register src) {
 }
 
 void X86Assembler::threeWayWrapper(size_t tgt, size_t lhs, size_t rhs, auto fun) {
-    withRegs([&](X64Register tReg, X64Register lReg, X64Register rReg) {
+    withRegs([&](x86::X64Register tReg, x86::X64Register lReg, x86::X64Register rReg) {
         fun(tReg, lReg, rReg);
 
         // flush result to original destination
@@ -593,14 +591,14 @@ void X86Assembler::threeWayWrapper(size_t tgt, size_t lhs, size_t rhs, auto fun)
 }
 
 void X86Assembler::twoWayWrapper(size_t tgt, size_t lhs, size_t rhs, auto fun) {
-    threeWayWrapper(tgt, lhs, rhs, [&](X64Register tReg, X64Register lReg, X64Register rReg) {
+    threeWayWrapper(tgt, lhs, rhs, [&](x86::X64Register tReg, x86::X64Register lReg, x86::X64Register rReg) {
         mc.movReg(tReg, lReg);
         fun(tReg, rReg);
     });
 }
 
 
-void X86Assembler::withSavedCallRegs(span<const X64Register> exclude, span<const X64Register> excluceRestore, const std::function<X64Register::SaveType(const X64Register&)>& convention, const std::function<void(const map<X64Register, size_t>&)>& callback) {
+void X86Assembler::withSavedCallRegs(span<const x86::X64Register> exclude, span<const x86::X64Register> excluceRestore, const std::function<x86::X64Register::SaveType(const x86::X64Register&)>& convention, const std::function<void(const map<x86::X64Register, size_t>&)>& callback) {
     auto saved = allocator.saveCallRegs(exclude, convention);
 
     for (const auto& [reg, stackHandle]: saved) {
@@ -627,7 +625,7 @@ vector<X86Assembler::Assembler::RegisterHandle> X86Assembler::getArgHandles() {
 }
 
 void X86Assembler::f64ToInt(RegisterHandle dest, RegisterHandle value) {
-    withRegs([&](X64Register dst, X64Register src) {
+    withRegs([&](x86::X64Register dst, x86::X64Register src) {
         mc.f64ToI64(dst, src);
 
         // flush result to original destination
@@ -658,7 +656,7 @@ string X86Assembler::nextReturnLabel() {
 }
 
 void X86Assembler::int2f64(RegisterHandle dest, RegisterHandle value) {
-    withRegs([&](X64Register dst, X64Register src) {
+    withRegs([&](x86::X64Register dst, x86::X64Register src) {
         auto srcSize = allocator.sizeOf(value);
 
         if (srcSize == 1) {
@@ -681,38 +679,38 @@ void X86Assembler::int2f64(RegisterHandle dest, RegisterHandle value) {
     }, dest, value);
 }
 
-void X86Assembler::arithmeticInt(ArithmeticOp op, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) {
-    if (op == ArithmeticOp::DIV) {
+void X86Assembler::arithmeticInt(BinaryOp op, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) {
+    if (op == BinaryOp::DIV) {
         return divInt(tgt, lhs, rhs);
     }
-    if (op == ArithmeticOp::MOD) {
+    if (op == BinaryOp::MOD) {
         return modInt(tgt, lhs, rhs);
     }
-    if (op == ArithmeticOp::SHL) {
+    if (op == BinaryOp::SHL) {
         return shlInt(tgt, lhs, rhs);
     }
-    if (op == ArithmeticOp::SHR) {
+    if (op == BinaryOp::SHR) {
         return shrInt(tgt, lhs, rhs);
     }
-    if (op == ArithmeticOp::EQ || op == ArithmeticOp::GT || op == ArithmeticOp::LS || op == ArithmeticOp::GE || op == ArithmeticOp::LE || op == ArithmeticOp::NEQ) {
-        threeWayWrapper(tgt, lhs, rhs, [&](X64Register tReg, X64Register lReg, X64Register rReg) {
+    if (op == BinaryOp::EQ || op == BinaryOp::GT || op == BinaryOp::LS || op == BinaryOp::GE || op == BinaryOp::LE || op == BinaryOp::NEQ) {
+        threeWayWrapper(tgt, lhs, rhs, [&](x86::X64Register tReg, x86::X64Register lReg, x86::X64Register rReg) {
             switch (op) {
-                case ArithmeticOp::EQ:
+                case BinaryOp::EQ:
                     mc.cmpI(CmpType::Equal, tReg, lReg, rReg);
                     break;
-                case ArithmeticOp::NEQ:
+                case BinaryOp::NEQ:
                     mc.cmpI(CmpType::NotEqual, tReg, lReg, rReg);
                     break;
-                case ArithmeticOp::GT:
+                case BinaryOp::GT:
                     mc.cmpI(CmpType::Greater, tReg, lReg, rReg);
                     break;
-                case ArithmeticOp::LS:
+                case BinaryOp::LS:
                     mc.cmpI(CmpType::Less, tReg, lReg, rReg);
                     break;
-                case ArithmeticOp::GE:
+                case BinaryOp::GE:
                     mc.cmpI(CmpType::GreaterOrEqual, tReg, lReg, rReg);
                     break;
-                case ArithmeticOp::LE:
+                case BinaryOp::LE:
                     mc.cmpI(CmpType::LessOrEqual, tReg, lReg, rReg);
                     break;
                 default:
@@ -724,13 +722,13 @@ void X86Assembler::arithmeticInt(ArithmeticOp op, Assembler::RegisterHandle tgt,
 
     auto doSimpleInst2 = [&](X64Instruction op, RegisterHandle acum, RegisterHandle value) {
         if (allocator.isStack(acum) && allocator.isStack(value)) { // we need temporary
-            withRegs([&](X64Register val) {
-                mc.writeMemRegInst(op, X64Register::Rsp, allocator.getStackOffset(acum), val);
+            withRegs([&](x86::X64Register val) {
+                mc.writeMemRegInst(op, x86::Rsp, allocator.getStackOffset(acum), val);
             }, value);
         } else if (allocator.isStack(acum) && !allocator.isStack(value)) {
-            mc.writeMemRegInst(op, X64Register::Rsp, allocator.getStackOffset(acum), allocator.getReg(value));
+            mc.writeMemRegInst(op, x86::Rsp, allocator.getStackOffset(acum), allocator.getReg(value));
         } else if (!allocator.isStack(acum) && allocator.isStack(value)) {
-            mc.writeRegMemInst(op, allocator.getReg(acum), X64Register::Rsp, allocator.getStackOffset(value));
+            mc.writeRegMemInst(op, allocator.getReg(acum), x86::Rsp, allocator.getStackOffset(value));
         } else {
             mc.writeRegInst(op, allocator.getReg(acum), allocator.getReg(value));
         }
@@ -753,7 +751,7 @@ void X86Assembler::arithmeticInt(ArithmeticOp op, Assembler::RegisterHandle tgt,
                 // mov tmp, [rsp+lhs]
                 // add tmp, [rsp+rhs]
                 // mov [rs+dst], tmp
-                withTempReg([&](X64Register tmp) {
+                withTempReg([&](x86::X64Register tmp) {
                     movHandleToReg(tmp, lhs);
                     doSimpleInst2(op, allocator.regToHandle(tmp), rhs);
                     movRegToHandle(dst, tmp);
@@ -763,102 +761,101 @@ void X86Assembler::arithmeticInt(ArithmeticOp op, Assembler::RegisterHandle tgt,
     };
 
     switch (op) {
-        case ArithmeticOp::ADD:
+        case BinaryOp::ADD:
             doSimpleInst(X64Instruction::add, tgt, lhs, rhs);
             break;
-        case ArithmeticOp::SUB:
+        case BinaryOp::SUB:
             doSimpleInst(X64Instruction::sub, tgt, lhs, rhs);
             break;
-        case ArithmeticOp::MUL:
-            twoWayWrapper(tgt, lhs, rhs, [&](X64Register lhs, X64Register rhs) {
+        case BinaryOp::MUL:
+            twoWayWrapper(tgt, lhs, rhs, [&](x86::X64Register lhs, x86::X64Register rhs) {
                 mc.writeRegInst(SusX64Instruction::imul, lhs, rhs);
             });
             break;
-        case ArithmeticOp::OR:
+        case BinaryOp::OR:
             doSimpleInst(X64Instruction::Or, tgt, lhs, rhs);
         break;
-        case ArithmeticOp::AND:
+        case BinaryOp::AND:
             doSimpleInst(X64Instruction::And, tgt, lhs, rhs);
         break;
-        case ArithmeticOp::XOR:
+        case BinaryOp::XOR:
             doSimpleInst(X64Instruction::xorI, tgt, lhs, rhs);
         break;
-        case ArithmeticOp::NEGATE:
-            doSimpleInst(X64Instruction::xorI, tgt, lhs, rhs);
+/*        case BinaryOp::NEGATE:
+            doSimpleInst(X64Instruction::xorI, tgt, lhs, rhs);*/
         break;
-        case ArithmeticOp::DIV:
-        case ArithmeticOp::MOD:
-        case ArithmeticOp::SHR:
-        case ArithmeticOp::SHL:
-        case ArithmeticOp::EQ:
-        case ArithmeticOp::NEQ:
-        case ArithmeticOp::GT:
-        case ArithmeticOp::LS:
-        case ArithmeticOp::GE:
-        case ArithmeticOp::LE:
+        case BinaryOp::DIV:
+        case BinaryOp::MOD:
+        case BinaryOp::SHR:
+        case BinaryOp::SHL:
+        case BinaryOp::EQ:
+        case BinaryOp::NEQ:
+        case BinaryOp::GT:
+        case BinaryOp::LS:
+        case BinaryOp::GE:
+        case BinaryOp::LE:
             PANIC();
     }
 }
 
-void X86Assembler::arithmeticFloat(Assembler::ArithmeticOp op, Assembler::FloatingPointType type, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) {
+void X86Assembler::arithmeticFloat(Assembler::BinaryOp op, Assembler::FloatingPointType type, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) {
     auto is64Bit = type == Assembler::FloatingPointType::Double;
 
-    threeWayWrapper(tgt, lhs, rhs, [&](X64Register dst, X64Register lhs, X64Register rhs) {
+    threeWayWrapper(tgt, lhs, rhs, [&](x86::X64Register dst, x86::X64Register lhs, x86::X64Register rhs) {
         switch (op) {
-            case ArithmeticOp::ADD:
+            case BinaryOp::ADD:
                 mc.addFloat(dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::SUB:
+            case BinaryOp::SUB:
                 mc.subFloat(dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::MUL:
+            case BinaryOp::MUL:
                 mc.mulFloat(dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::DIV:
+            case BinaryOp::DIV:
                 mc.divFloat(dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::EQ:
+            case BinaryOp::EQ:
                 mc.floatCompare(CmpType::Equal, dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::LS:
+            case BinaryOp::LS:
                 mc.floatCompare(CmpType::Above, dst, rhs, lhs, is64Bit);
                 break;
-            case ArithmeticOp::GT:
+            case BinaryOp::GT:
                 mc.floatCompare(CmpType::Above, dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::GE:
+            case BinaryOp::GE:
                 mc.floatCompare(CmpType::NotBellow, dst, lhs, rhs, is64Bit);
                 break;
-            case ArithmeticOp::LE:
+            case BinaryOp::LE:
                 mc.floatCompare(CmpType::NotBellow, dst, rhs, lhs, is64Bit);
                 break;
-            case ArithmeticOp::NEQ:
+            case BinaryOp::NEQ:
                 mc.floatCompare(CmpType::NotEqual, dst, rhs, lhs, is64Bit);
                 break;
-            case ArithmeticOp::OR:
-            case ArithmeticOp::AND:
-            case ArithmeticOp::XOR:
-            case ArithmeticOp::NEGATE:
-            case ArithmeticOp::MOD:
-            case ArithmeticOp::SHR:
-            case ArithmeticOp::SHL:
+            case BinaryOp::OR:
+            case BinaryOp::AND:
+            case BinaryOp::XOR:
+            case BinaryOp::MOD:
+            case BinaryOp::SHR:
+            case BinaryOp::SHL:
                 PANIC("unsuported arithmetic op");
         }
     });
 }
 
-void X86Assembler::garbageMemCpy(X64Register dst, size_t dstOffset, X64Register src, size_t srcOffset, size_t stackSize) {
+void X86Assembler::garbageMemCpy(x86::X64Register dst, size_t dstOffset, x86::X64Register src, size_t srcOffset, size_t stackSize) {
     // FIXME assert(isAligned(stackSize, REG_SIZE));
 
-    array<X64Register, 2> ignore{dst, src};
+    array<x86::X64Register, 2> ignore{dst, src};
 
-    withTempReg([&](X64Register tmp) {
+    withTempReg([&](x86::X64Register tmp) {
         mc.garbageMemCpy(dst, src, stackSize, tmp, srcOffset, dstOffset);
     }, ignore);
 }
 
 template<typename T>
-void X86Assembler::withTempReg(T callback, span<const X64Register> ign) {
+void X86Assembler::withTempReg(T callback, span<const x86::X64Register> ign) {
     callWrapper(callback, &T::operator(), ign);
 }
 
@@ -868,9 +865,9 @@ void X86Assembler::finallCallbackWrapper(Class obj, Ret (Class::*lambda)(Args...
 }
 
 template<typename Class, typename... Args>
-void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, span<const X64Register> ignore1) {
-    vector<pair<X64Register, optional<size_t>>> restorCtx;
-    set<X64Register> clobbered;
+void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, span<const x86::X64Register> ignore1) {
+    vector<pair<x86::X64Register, optional<size_t>>> restorCtx;
+    set<x86::X64Register> clobbered;
 
     for (auto ing : ignore1) {
         clobbered.insert(ing);
@@ -883,12 +880,12 @@ void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, 
 
 template<typename... Args, typename F>
 void X86Assembler::withRegs(F fan, Args... args) {
-    set<X64Register> clobered;
-    vector<pair<X64Register, optional<size_t >>> toRestore;
+    set<x86::X64Register> clobered;
+    vector<pair<x86::X64Register, optional<size_t >>> toRestore;
 
     // put all reg args to clobbered to prevent them from being allocated
     for (auto handle : {args...}) {
-        if (RegAlloc::isStack(handle)) continue;
+        if (allocator.isStack(handle)) continue;
         clobered.insert(allocator.getReg(handle));
     }
 
@@ -907,7 +904,7 @@ void X86Assembler::addressOf(Assembler::RegisterHandle tgt, Assembler::RegisterH
     }, tgt);
 }
 
-void X86Assembler::movRegToReg(const X64Register& dst, const X64Register& src, size_t size) {
+void X86Assembler::movRegToReg(const x86::X64Register& dst, const x86::X64Register& src, size_t size) {
     mc.movReg(dst, src);
     if (size == 1) {
         mc.writeMovZX8(dst, dst);
@@ -918,28 +915,28 @@ void X86Assembler::movRegToReg(const X64Register& dst, const X64Register& src, s
     // FIXME maybe even zx 32bit
 }
 
-void X86Assembler::movRegToStack(size_t handle, int _offset, const X64Register& src) {
+void X86Assembler::movRegToStack(size_t handle, int _offset, const x86::X64Register& src) {
     auto size = allocator.stackSize(handle);
     auto offset = allocator.getStackOffset(handle)+_offset;
 
     mc.writeStackAmount(offset, src, size);
 }
 
-void X86Assembler::movStackToReg(const X64Register& dst, size_t adrHandle, int srcOffset) {
+void X86Assembler::movStackToReg(const x86::X64Register& dst, size_t adrHandle, int srcOffset) {
     assert(allocator.isStack(adrHandle));
     auto size = allocator.stackSize(adrHandle);
     auto offset = allocator.getStackOffset(adrHandle)+srcOffset;
 
     if (size == 1) {
-        mc.read1(dst, X64Register::Rsp, offset);
+        mc.read1(dst, x86::Rsp, offset);
         mc.writeMovZX8(dst, dst);
     }
     else if (size == 2) {
-        mc.read2(dst, X64Register::Rsp, offset);
+        mc.read2(dst, x86::Rsp, offset);
         mc.writeMovZX16(dst, dst);
     }
     else if (size == 4) {
-        mc.read4(dst, X64Register::Rsp, offset);
+        mc.read4(dst, x86::Rsp, offset);
     }
     else if (size == 8) {
         mc.readStack(offset, dst);
@@ -973,7 +970,7 @@ void X86Assembler::signExtend(Assembler::RegisterHandle dst, Assembler::Register
     (void)dstSize;
     assert(dstSize >= srcSize);
 
-    withRegs([&](X64Register dstReg, X64Register srcReg) {
+    withRegs([&](x86::X64Register dstReg, x86::X64Register srcReg) {
         // FIXME
         if (srcSize == 1) {
             mc.movsx8(dstReg, srcReg);
@@ -991,14 +988,14 @@ void X86Assembler::signExtend(Assembler::RegisterHandle dst, Assembler::Register
 }
 
 void X86Assembler::initializeSYSV() {
-    const std::array<X64Register, 6> SYSV_REGS{X64Register::Rdi, X64Register::Rsi, X64Register::Rdx, X64Register::Rcx, X64Register::R8, X64Register::R9};
-    const X64Register TMP_REG = X64Register::Rax;
+    const std::array<x86::X64Register, 6> SYSV_REGS{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
+    const x86::X64Register TMP_REG = x86::Rax;
     const auto STACK_ARGS_BASE = 16;
 
-    mc.push(X64Register::Rbp);
-    mc.movReg(X64Register::Rbp, X64Register::Rsp);
+    mc.push(x86::Rbp);
+    mc.movReg(x86::Rbp, x86::Rsp);
 
-    auto label = mc.subImm32(X64Register::Rsp, 0x0);
+    auto label = mc.subImm32(x86::Rsp, 0x0);
     requestLabel(allocateLabel(), label, LABEL_TYPE_STACK_SIZE, BaseType::ABSOLUTE_4);
 
     bindRawLabel(allocateLabel(), LABEL_STACK_BEGIN);
@@ -1031,7 +1028,7 @@ void X86Assembler::initializeSYSV() {
             auto aligned = align(argSize, REG_SIZE);
             auto stack = allocateStack(aligned);
 
-            mc.garbageMemCpy(X64Register::Rsp, X64Register::Rbp, aligned, TMP_REG, STACK_ARGS_BASE+stackOffset, allocator.getStackOffset(stack));
+            mc.garbageMemCpy(x86::Rsp, x86::Rbp, aligned, TMP_REG, STACK_ARGS_BASE+stackOffset, allocator.getStackOffset(stack));
 
             argHandles.push_back(stack);
 
@@ -1041,14 +1038,14 @@ void X86Assembler::initializeSYSV() {
 }
 
 void X86Assembler::initializeFastCall() {
-    const std::array<X64Register, 4> FAST_REGS{X64Register::Rcx, X64Register::Rdx, X64Register::R8, X64Register::R9};
-    const X64Register TMP_REG = X64Register::Rax;
+    const std::array<x86::X64Register, 4> FAST_REGS{x86::Rcx, x86::Rdx, x86::R8, x86::R9};
+    const x86::X64Register TMP_REG = x86::Rax;
     const auto STACK_ARGS_BASE = 16;
     const auto STACK_RESERVED = REG_SIZE*FAST_REGS.size();
 
     mc.frameInit();
 
-    auto label = mc.subImm32(X64Register::Rsp, 0x0);
+    auto label = mc.subImm32(x86::Rsp, 0x0);
     requestLabel(allocateLabel(), label, LABEL_TYPE_STACK_SIZE, BaseType::ABSOLUTE_4);
 
     bindRawLabel(allocateLabel(), LABEL_STACK_BEGIN);
@@ -1076,7 +1073,7 @@ void X86Assembler::initializeFastCall() {
             auto stackHandle = allocator.allocateStack(argSize);
             argHandles.push_back(stackHandle);
 
-            mc.garbageMemCpy(X64Register::Rsp, reg, argSize, TMP_REG, 0, allocator.getStackOffset(stackHandle));
+            mc.garbageMemCpy(x86::Rsp, reg, argSize, TMP_REG, 0, allocator.getStackOffset(stackHandle));
 
             allocatedArgs += 1;
         } else { // value is passed through stack
@@ -1092,7 +1089,7 @@ void X86Assembler::initializeFastCall() {
                 dynamicOffset = argId*REG_SIZE;
             }
 
-            mc.garbageMemCpy(X64Register::Rsp, X64Register::Rbp, aligned, TMP_REG, STACK_ARGS_BASE+dynamicOffset+stackOffset, allocator.getStackOffset(stack));
+            mc.garbageMemCpy(x86::Rsp, x86::Rbp, aligned, TMP_REG, STACK_ARGS_BASE+dynamicOffset+stackOffset, allocator.getStackOffset(stack));
 
             stackOffset += aligned;
         }
@@ -1100,7 +1097,7 @@ void X86Assembler::initializeFastCall() {
 }
 
 void X86Assembler::f32ToF64(Assembler::RegisterHandle dest, Assembler::RegisterHandle value) {
-    withRegs([&](X64Register dst, X64Register src) {
+    withRegs([&](x86::X64Register dst, x86::X64Register src) {
         mc.floatToDouble(dst, src);
 
         // flush result to original destination
@@ -1109,7 +1106,7 @@ void X86Assembler::f32ToF64(Assembler::RegisterHandle dest, Assembler::RegisterH
 }
 
 void X86Assembler::f64ToF32(Assembler::RegisterHandle dest, Assembler::RegisterHandle value) {
-    withRegs([&](X64Register dst, X64Register src) {
+    withRegs([&](x86::X64Register dst, x86::X64Register src) {
         mc.doubleToFloat(dst, src);
 
         // flush result to original destination
@@ -1118,7 +1115,7 @@ void X86Assembler::f64ToF32(Assembler::RegisterHandle dest, Assembler::RegisterH
 }
 
 Arg X86Assembler::handleToArg(size_t handle) {
-    if (RegAlloc::isStack(handle)) {
+    if (allocator.isStack(handle)) {
         return Arg::StackValue(allocator.getStackOffset(handle), allocator.sizeOf(handle));
     } else {
         return Arg::Reg(allocator.getReg(handle));
@@ -1141,8 +1138,8 @@ size_t X86Assembler::calculateStackSizeFastCall(span<const RegisterHandle> args)
 }
 
 void X86Assembler::invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret) {
-    vector<X64Register> exclude;
-    vector<X64Register> excludeRestore;
+    vector<x86::X64Register> exclude;
+    vector<x86::X64Register> excludeRestore;
 
     if (ret.has_value() && ret->type == Arg::REGISTER) {
         bool contains = false;
@@ -1160,7 +1157,7 @@ void X86Assembler::invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret
         }
     }
 
-    withSavedCallRegs(exclude, excludeRestore, sysVSave, [&](const auto& saved){
+    withSavedCallRegs(exclude, excludeRestore, x86::sysVSave, [&](const auto& saved){
         mc.invokeScuffedSYSV2(func, args, ret, saved, [&](auto dst, auto sym, auto imm) {
             generateArgMove(dst, sym, imm);
         });
@@ -1168,8 +1165,8 @@ void X86Assembler::invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret
 }
 
 void X86Assembler::invokeScuffedFastCall(Arg func, span<Arg> args, optional<Arg> ret) {
-    vector<X64Register> exclude;
-    vector<X64Register> excludeRestore;
+    vector<x86::X64Register> exclude;
+    vector<x86::X64Register> excludeRestore;
 
     if (ret.has_value() && ret->type == Arg::REGISTER) {
         bool contains = false;
@@ -1187,7 +1184,7 @@ void X86Assembler::invokeScuffedFastCall(Arg func, span<Arg> args, optional<Arg>
         }
     }
 
-    withSavedCallRegs(exclude, excludeRestore, fastCallSave, [&](const auto& saved){
+    withSavedCallRegs(exclude, excludeRestore, x86::fastCallSave, [&](const auto& saved){
         mc.invokeScuffedFastCall(func, args, ret, saved, [&](auto dst, auto sym, auto imm) {
                                      generateArgMove(dst, sym, imm);
                                  }, [&](auto amount){ return allocator.getStackOffset(allocator.allocateStack(amount)); });
@@ -1217,7 +1214,7 @@ CmpType toCmpType(JumpCondType it) {
 }
 
 void X86Assembler::jmpCond(size_t label, JumpCondType type, RegisterHandle lhs, RegisterHandle rhs) {
-    withRegs([&](X64Register a, X64Register b) {
+    withRegs([&](x86::X64Register a, x86::X64Register b) {
         mc.writeRegInst(X64Instruction::cmp, a, b);
     }, lhs, rhs);
     writeJmp(toCmpType(type), label);
@@ -1225,9 +1222,9 @@ void X86Assembler::jmpCond(size_t label, JumpCondType type, RegisterHandle lhs, 
 
 size_t X86Assembler::preserveCalleeRegs() {
     if constexpr (arch::isUnixLike()) {
-        return  preserveCalleeRegs(sysVSave);
+        return  preserveCalleeRegs(x86::sysVSave);
     } else if (arch::isWindows()) {
-        return  preserveCalleeRegs(fastCallSave);
+        return  preserveCalleeRegs(x86::fastCallSave);
     } else {
         static_assert("unsuported platform");
     }

@@ -82,6 +82,14 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
             assert(reg.isValid());
         });
     }
+
+    std::vector<SSARegisterHandle> getSources() {
+        std::vector<SSARegisterHandle> s;
+        visitSrcs([&](auto x) {
+            s.push_back(x);
+        });
+        return s;
+    }
 private:
     virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {}
 };
@@ -155,7 +163,6 @@ struct IR1Instruction: public IRInstruction<CTX> {
 template<StringLiteral V, typename CTX>
 struct IR0Instruction: public IRInstruction<CTX> {
     IR0Instruction(): IRInstruction<CTX>(SSARegisterHandle::invalid(), string(V.asView())) {}
-    // explicit IR0Instruction(SSARegisterHandle h): IRInstruction<CTX>(h, string(V.asView())) {}
 
     void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 

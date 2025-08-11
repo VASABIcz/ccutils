@@ -155,10 +155,10 @@ public:
     void modInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) override;
     void shlInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) override;
     void shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) override;
-    void arithmeticInt(ArithmeticOp op, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) override;
+    void arithmeticInt(BinaryOp op, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) override;
 
     // float operations
-    void arithmeticFloat(ArithmeticOp op, Assembler::FloatingPointType type, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) override;
+    void arithmeticFloat(BinaryOp op, Assembler::FloatingPointType type, Assembler::RegisterHandle tgt, Assembler::RegisterHandle lhs, Assembler::RegisterHandle rhs) override;
 
     // float int conversion
     void f64ToInt(RegisterHandle dest, RegisterHandle value) override;
@@ -167,7 +167,7 @@ public:
     /*void numericCast(Assembler::RegisterHandle dst, Assembler::RegisterHandle src, NumericType dstType, NumericType srcType) {
         if (srcType.isSigned() && dstType.isFloating()) {
             auto srcSize = allocator.sizeOf(src);
-            withRegs([&](const X64Register& srcReg, const X64Register& dstReg) {
+            assertStableRegs([&](const x86::X64Register& srcReg, const x86::X64Register& dstReg) {
                 if (srcSize == 8) {
                     mc.movsx8(srcReg, srcReg);
                 }
@@ -223,9 +223,9 @@ public:
     // complex functions, which boil down to builtin function invocation
     // void objectGetter(Assembler::RegisterHandle target, Assembler::RegisterHandle object, size_t fieldId) override;
 
-    void garbageMemCpy(X64Register ptrReg, size_t stackOffset, size_t stackSize);
+    void garbageMemCpy(x86::X64Register ptrReg, size_t stackOffset, size_t stackSize);
 
-    void garbageMemCpy(X64Register dst, size_t dstOffset, X64Register src, size_t srcOffset, size_t stackSize);
+    void garbageMemCpy(x86::X64Register dst, size_t dstOffset, x86::X64Register src, size_t srcOffset, size_t stackSize);
 
     size_t allocateJmpLabel() override {
         return this->labelId++;
@@ -261,7 +261,7 @@ public:
 
     // void putLabel(string_view name, ImmSpace space, Label::Type type, size_t data = 0);
 
-    void withSavedCallRegs(span<const X64Register> exclude, span<const X64Register> excluceRestore, const std::function<X64Register::SaveType(const X64Register&)>& convention, const std::function<void(const map<X64Register, size_t>&)>& callback);
+    void withSavedCallRegs(span<const x86::X64Register> exclude, span<const x86::X64Register> excluceRestore, const std::function<x86::X64Register::SaveType(const x86::X64Register&)>& convention, const std::function<void(const map<x86::X64Register, size_t>&)>& callback);
 
 
     void callC(Arg label, span<const RegisterHandle> args, optional<RegisterHandle> ret) {
@@ -282,9 +282,9 @@ public:
 
     void writeJmp(size_t id);
 
-    void withSpecificReg(const X64Register& reg, const function<void()>& callback);
+    void withSpecificReg(const x86::X64Register& reg, const function<void()>& callback);
 
-    size_t preserveCalleeRegs(const std::function<X64Register::SaveType(X64Register)>& save);
+    size_t preserveCalleeRegs(const std::function<x86::X64Register::SaveType(x86::X64Register)>& save);
 
     void forEachLabel(std::function<void(SlotLabel&)> funk) {
         for (auto& slots : this->slotLabels) {
@@ -336,31 +336,36 @@ public:
 
     void instructionNumberHint(size_t id) override;
 
-    void movToArgRegVIPLCallingConvention(const X64Register& dst, Assembler::RegisterHandle src, const map<X64Register, size_t>& preserved, bool moveAsIs = false);
+    void movToArgRegVIPLCallingConvention(const x86::X64Register& dst, Assembler::RegisterHandle src, const map<x86::X64Register, size_t>& preserved, bool moveAsIs = false);
 
     size_t writeStack(size_t offset, Assembler::RegisterHandle handle);
 
-    size_t dumpToStack(X64Register reg);
+    size_t dumpToStack(x86::X64Register reg);
 
     template<typename Ret, typename Class, typename... Args>
     void finallCallbackWrapper(Class obj, Ret (Class::* lambda)(Args...) const, Args... args);
 
     template<typename Class, typename... Args>
-    void callWrapper(Class obj, void (Class::* lambda)(Args...) const, span<const X64Register> ignore1);
+    void callWrapper(Class obj, void (Class::* lambda)(Args...) const, span<const x86::X64Register> ignore1);
 
     template<typename T>
-    void withTempReg(T callback, span<const X64Register> a);
+    void withTempReg(T callback, span<const x86::X64Register> a);
 
     struct RegAllocCtx {
         X86Assembler* self;
-        std::set<X64Register> used;
-        std::map<X64Register, size_t> toRestore;
+        std::set<x86::X64Register> used;
+        std::map<x86::X64Register, size_t> toRestore;
         std::map<size_t, size_t> toWriteback;
         std::set<size_t> toFree;
+        bool didRestore = false;
 
         RegAllocCtx(X86Assembler* self): self(self) {}
 
         RegAllocCtx(const RegAllocCtx&) = delete;
+
+        ~RegAllocCtx() {
+            assert(didRestore);
+        }
 
         /// allocate register ensure its not stack
         size_t allocReg() {
@@ -384,8 +389,9 @@ public:
         size_t originalTransform(size_t idk) {
             if (self->allocator.isStack(idk)) return idk;
 
-            if (this->toRestore.contains(self->allocator.getReg(idk))) {
-                return this->toRestore[self->allocator.getReg(idk)];
+            auto reg = self->allocator.getReg(idk);
+            if (this->toRestore.contains(reg)) {
+                return this->toRestore[reg];
             } else {
                 return idk;
             }
@@ -402,7 +408,7 @@ public:
         }
 
         /// get the backing register
-        X64Register REG(size_t handle) {
+        x86::X64Register REG(size_t handle) {
             return self->allocator.getReg(handle);
         }
 
@@ -432,13 +438,17 @@ public:
 
             self->movReg(reg, handle);
             assert(not toWriteback.contains(reg));
+            auto ori = toWriteback.size();
             toWriteback.insert({reg, handle});
+            assert(ori+1 == toWriteback.size());
 
             return reg;
         }
 
         /// if we had to spill any registers restore them
         void restore() {
+            assert(!didRestore);
+            didRestore = true;
             for (auto [reg, stack] : toWriteback) {
                 self->movReg(stack, reg);
                 self->freeRegister(reg);
@@ -461,30 +471,30 @@ public:
     // allocate temp reg
     // if no reg is available it will swap it to stack
     // and move original value to it
-    X64Register idk(size_t handle, set<X64Register>& clobered, vector<pair<X64Register, optional<size_t>>>& toRestore);
+    x86::X64Register idk(size_t handle, set<x86::X64Register>& clobered, vector<pair<x86::X64Register, optional<size_t>>>& toRestore);
 
-    X64Register idk2(set<X64Register>& clobered, vector<pair<X64Register, optional<size_t>>>& toRestore);
+    x86::X64Register idk2(set<x86::X64Register>& clobered, vector<pair<x86::X64Register, optional<size_t>>>& toRestore);
 
-    void restoreRegState(vector<pair<X64Register, optional<size_t>>>& regs);
+    void restoreRegState(vector<pair<x86::X64Register, optional<size_t>>>& regs);
 
     template<typename... Args, typename F>
     void withRegs(F fan, Args... args);
 
-    void movRegToHandle(size_t dst, X64Register src);
+    void movRegToHandle(size_t dst, x86::X64Register src);
 
-    void movHandleToReg(const X64Register& dst, Assembler::RegisterHandle src);
+    void movHandleToReg(const x86::X64Register& dst, Assembler::RegisterHandle src);
 
     void threeWayWrapper(size_t tgt, size_t lhs, size_t rhs, auto fun);
 
     void twoWayWrapper(size_t tgt, size_t lhs, size_t rhs, auto fun);
 
-    void movRegToReg(const X64Register& dst, const X64Register& src, size_t size);
+    void movRegToReg(const x86::X64Register& dst, const x86::X64Register& src, size_t size);
 
-    void movRegToStack(size_t handle, int _offset, const X64Register& src);
+    void movRegToStack(size_t handle, int _offset, const x86::X64Register& src);
 
     size_t addressOf(size_t stackHandle);
 
-    void movStackToReg(const X64Register& dst, size_t adrHandle, int srcOffset = 0);
+    void movStackToReg(const x86::X64Register& dst, size_t adrHandle, int srcOffset = 0);
 
     void freeHandles(span<const size_t> handles);
 
@@ -492,7 +502,7 @@ public:
 
     size_t getLabelId(size_t name);
 
-    size_t toHandleStupid(const X64Register& reg) {
+    size_t toHandleStupid(const x86::X64Register& reg) {
         return allocator.toHandleStupid(reg);
     }
 
@@ -503,11 +513,11 @@ public:
     size_t calculateStackSizeFastCall(span<const RegisterHandle> args);
 
     /*    void fastCall(LinkSymbol label, span<const RegisterHandle> args, optional<RegisterHandle> ret) {
-        const array<X64Register, 4> FAST_CALL_REG_ARGS{X64Register::Rcx, X64Register::Rdx, X64Register::R8, X64Register::R9};
+        const array<x86::X64Register, 4> FAST_CALL_REG_ARGS{x86::X64Register::Rcx, x86::X64Register::Rdx, x86::X64Register::R8, x86::X64Register::R9};
         const size_t STACK_BYTES_USED = calculateStackSizeFastCall(args);
         const size_t STACK_BYTES_RESERVED = REG_SIZE * FAST_CALL_REG_ARGS.size(); // 40B
 
-        vector<X64Register> ignoredRegs;
+        vector<x86::X64Register> ignoredRegs;
         if (ret.has_value() && !RegAlloc::isStack(*ret)) {
             ignoredRegs.push_back(allocator.getReg(*ret));
         }
@@ -517,7 +527,7 @@ public:
         withSavedCallRegs(ignoredRegs, fastCallSave, [&](const auto& savedRegs) {
             // prepare arg stack
             auto stackAllocated = align(STACK_BYTES_USED + STACK_BYTES_RESERVED, 16);
-            mc.subImm32(X64Register::Rsp, stackAllocated);
+            mc.subImm32(x86::X64Register::Rsp, stackAllocated);
 
             // FIXME the arguments are pused from right to left IDK if we are doing that fix if wrong :*
             for (auto [index, arg] : args | views::enumerate) {
@@ -544,18 +554,18 @@ public:
             // FIXME not sure about the return stuff
 
             // move address to rax
-            movLabel(X64Register::Rax, label);
+            movLabel(x86::X64Register::Rax, label);
 
             // call ret reg
-            mc.call(X64Register::Rax);
+            mc.call(x86::X64Register::Rax);
 
             // move rax to ret
             if (ret.has_value()) {
-                movRegToHandle(*ret, X64Register::Rax);
+                movRegToHandle(*ret, x86::X64Register::Rax);
             }
 
             // restore arg stack
-            mc.addImm32(X64Register::Rsp, stackAllocated);
+            mc.addImm32(x86::X64Register::Rsp, stackAllocated);
         });
     }*/
 
@@ -564,7 +574,7 @@ public:
     // 8 < value <= 16 will be passed over 2 registers
     void invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret);
 
-    void generateArgMove(X64Register ret, Arg arg, ImmSpace imm) {
+    void generateArgMove(x86::X64Register ret, Arg arg, ImmSpace imm) {
         if (not arg.symbol.has_value()) return;
 
         switch (arg.type) {

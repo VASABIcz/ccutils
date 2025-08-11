@@ -39,7 +39,7 @@ void _fail(T msg) {
 }
 
 // #define TODO(msg, ...) {assert(false); fail()}
-#define TODO() {println("{} reached unimplement point", FAIL_FORMAT); std::terminate();}
+#define TODO(...) {println("{} reached unimplement point", FAIL_FORMAT); std::terminate();}
 #define TODOF(...) cout << FAIL_FORMAT << endl; assert(false); consume(__VA_ARGS__)
 #define UNREACHABLEF(...) println("reached unreachable point at {} {}", FAIL_FORMAT, stringify(__VA_ARGS__)); std::unreachable()
 #define UNREACHABLE() {println("{} reached unreachable point at", FAIL_FORMAT); PANIC();}
