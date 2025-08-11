@@ -33,18 +33,6 @@ namespace instructions {
     template<typename CTX>
     struct AddressOf;
     template<typename CTX>
-    struct IntEquals;
-    template<typename CTX>
-    struct IntGt;
-    template<typename CTX>
-    struct IntGe;
-    template<typename CTX>
-    struct IntSub;
-    template<typename CTX>
-    struct IntLe;
-    template<typename CTX>
-    struct IntLess;
-    template<typename CTX>
     struct BranchCond;
     template<typename CTX>
     struct JumpCond;

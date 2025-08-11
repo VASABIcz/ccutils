@@ -14,6 +14,7 @@ using namespace std;
 namespace instructions {
     template<typename CTX>
     struct BinaryInstruction: public IR2Instruction2<CTX> {
+        PUB_VIRTUAL_COPY(BinaryInstruction)
         Assembler::BinaryOp op;
         Assembler::BaseDataType type;
 
@@ -26,7 +27,7 @@ namespace instructions {
         ): IR2Instruction2<CTX>(tgt, lhs, rhs, stringify("{}_{}", Assembler::baseTypeToString(type), Assembler::binaryOpToString(op))), op(op), type(type) {}
 
         void generate(CTX::GEN& ctx) override {
-            ctx.assembler.binaryInst();
+            ctx.assembler.binaryInst(op, ctx.getReg(this->target), ctx.getReg(this->lhs), ctx.getReg(this->rhs), type);
         }
     };
 

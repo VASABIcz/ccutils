@@ -92,6 +92,7 @@ public:
             TO_STRING(LS)
             TO_STRING(LE)
         }
+        TODO()
     }
 #undef TO_STRING
 
@@ -135,6 +136,7 @@ public:
             TO_STRING(F64)
             TO_STRING(F32)
         }
+        TODO();
     }
 #undef TO_STRING
 

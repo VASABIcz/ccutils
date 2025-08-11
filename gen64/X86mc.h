@@ -128,7 +128,7 @@ struct Arg {
         return idk;
     }
 
-    static Arg Rel32Adr(size_t type, size_t symbol, int32_t adent) {
+    static Arg Rel32Adr(size_t type, size_t symbol, int32_t adent = 0) {
         Arg idk;
         idk.symbol = symbol;
         idk.type = Type::SYMBOL_RIP_OFF_32;
@@ -138,7 +138,7 @@ struct Arg {
         return idk;
     }
 
-    static Arg Rel32Val(size_t symbol, int32_t adent) {
+    static Arg Rel32Val(size_t symbol, int32_t adent = 0) {
         Arg idk;
         idk.symbol = symbol;
         idk.type = Type::SYMBOL_RIP_VALUE_32;

@@ -341,48 +341,50 @@ bool optimizeJmpCond(typename CTX::IRGEN& gen) {
             if (cnd1 == nullptr) continue;
             auto& cnd = *cnd1;
 
-            optional<JumpCondType> tajp;
-            optional<SSARegisterHandle> rhs;
-            optional<SSARegisterHandle> lhs;
+            JumpCondType tajp;
+            SSARegisterHandle rhs;
+            SSARegisterHandle lhs;
 
-            cnd->template ifIs<instructions::IntEquals<CTX>>([&](auto& it) {
-                tajp = JumpCondType::EQUALS;
-                rhs = it.rhs;
-                lhs = it.lhs;
-            });
-            cnd->template ifIs<instructions::IntGe<CTX>>([&](auto& it) {
-                tajp = JumpCondType::GREATER_OR_EQUAL;
-                rhs = it.rhs;
-                lhs = it.lhs;
-            });
-            cnd->template ifIs<instructions::IntGt<CTX>>([&](auto& it) {
-                tajp = JumpCondType::GREATER;
-                rhs = it.rhs;
-                lhs = it.lhs;
-            });
-            cnd->template ifIs<instructions::IntLess<CTX>>([&](auto& it) {
-                tajp = JumpCondType::LESS;
-                rhs = it.rhs;
-                lhs = it.lhs;
-            });
-            cnd->template ifIs<instructions::IntLe<CTX>>([&](auto& it) {
-                tajp = JumpCondType::LESS_OR_EQUAL;
-                rhs = it.rhs;
-                lhs = it.lhs;
-            });
+            if (cnd->template is<instructions::BinaryInstruction>()) {
+                continue;
+            }
 
-            if (not tajp.has_value()) continue;
+            instructions::BinaryInstruction<CTX>* xd = cnd->template as<instructions::BinaryInstruction>();
+
+            Assembler::BinaryOp op = xd->op;
+            switch (op) {
+                case Assembler::BinaryOp::EQ:
+                    tajp = JumpCondType::EQUALS;
+                    break;
+                case Assembler::BinaryOp::NEQ:
+                    tajp = JumpCondType::NOT_EQUALS;
+                    break;
+                case Assembler::BinaryOp::GT:
+                    tajp = JumpCondType::GREATER;
+                    break;
+                case Assembler::BinaryOp::GE:
+                    tajp = JumpCondType::GREATER_OR_EQUAL;
+                    break;
+                case Assembler::BinaryOp::LS:
+                    tajp = JumpCondType::LESS;
+                    break;
+                case Assembler::BinaryOp::LE:
+                    tajp = JumpCondType::LESS_OR_EQUAL;
+                    break;
+                default:
+                    continue;
+            }
 
             switch (type) {
                 case Type::BRANCH:
-                    instruction = CopyPtr<IRInstruction<CTX>>(make_unique<instructions::BranchCond<CTX>>(*tajp, *lhs, *rhs, scopeT, scopeF));
+                    instruction = CopyPtr<IRInstruction<CTX>>(make_unique<instructions::BranchCond<CTX>>(tajp, lhs, rhs, scopeT, scopeF));
                     break;
                 case Type::JUMP_TRUE:
-                    instruction = CopyPtr<IRInstruction<CTX>>(make_unique<instructions::JumpCond<CTX>>(*tajp, *lhs, *rhs, scopeT, scopeF));
+                    instruction = CopyPtr<IRInstruction<CTX>>(make_unique<instructions::JumpCond<CTX>>(tajp, lhs, rhs, scopeT, scopeF));
                     break;
                 case Type::JUMP_FALSE:
+                    instruction = CopyPtr<IRInstruction<CTX>>(make_unique<instructions::JumpCond<CTX>>(negateType(tajp), lhs, rhs, scopeT, scopeF));
                     break;
-                    instruction = CopyPtr<IRInstruction<CTX>>(make_unique<instructions::JumpCond<CTX>>(negateType(*tajp), *lhs, *rhs, scopeT, scopeF));
             }
 
             didOptimize = true;
