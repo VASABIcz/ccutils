@@ -3,6 +3,8 @@
 #include "codegen/x86/RegAlloc.h"
 #include "codegen/x86/X86Assembler.h"
 
+// values with higher priority have higher chance of landing register
+// priority is calculated based on number of uses / (duration alive)^2
 template<typename CTX>
 struct BetterAllocator : Allocator<CTX> {
     typedef size_t RegisterHandle;
