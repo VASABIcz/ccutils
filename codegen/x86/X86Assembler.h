@@ -438,9 +438,9 @@ public:
 
             self->movReg(reg, handle);
             assert(not toWriteback.contains(reg));
-            auto ori = toWriteback.size();
+            // auto ori = toWriteback.size();
             toWriteback.insert({reg, handle});
-            assert(ori+1 == toWriteback.size());
+            // assert(ori+1 == toWriteback.size());
 
             return reg;
         }

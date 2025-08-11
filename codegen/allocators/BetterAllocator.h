@@ -166,10 +166,12 @@ struct BetterAllocator : Allocator<CTX> {
 
         regs = allocated;
 
-        println("=== AAAAAA ===");
-        for (auto reg : sorted) {
-            LiveRanges::printRange(reg, currentLiveRanges.currentLiveRanges[reg]);
-            println("{}", regAlloc.debugString(regs[reg].first));
+        if (false) {
+            println("=== AAAAAA ===");
+            for (auto reg : sorted) {
+                LiveRanges::printRange(reg, currentLiveRanges.currentLiveRanges[reg]);
+                println("{}", regAlloc.debugString(regs[reg].first));
+            }
         }
 
         regAlloc.clear();

@@ -5,7 +5,6 @@ add_library(gen64 OBJECT
         X86mc.h
         definitions.h
         Register.h
-        definitions.cpp
         X86mc.cpp
         elf.h
 )
