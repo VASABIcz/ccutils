@@ -44,4 +44,8 @@ namespace instructions {
     struct Alloca;
     template<typename CTX>
     struct Arg;
+    template<typename CTX>
+    struct PointerStore;
+    template<typename CTX>
+    struct PointerLoad;
 }
