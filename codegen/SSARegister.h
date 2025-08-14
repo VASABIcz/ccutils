@@ -25,6 +25,10 @@ public:
 
     }
 
+    SSARegister(size_t blockId, string name, Type type, std::optional<SSARegisterHandle> prev = std::nullopt) : name(std::move(name)), blockId(blockId), previous(prev), type(type) {
+
+    }
+
     void incUseCount() {
         // println("INCING: {}", getHandle());
         useCount++;
