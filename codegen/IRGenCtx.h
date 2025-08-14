@@ -158,6 +158,7 @@ struct IRGenCtx {
 
     pair<SSARegisterHandle, instructions::PhiFunction<CTX>*> makePhi(span<pair<SSARegisterHandle, size_t>> regs) const {
         for (auto idk : regs) {
+            (void)idk;
             assert(idk.first.isValid());
         }
         auto temp = this->gen.generateNewVersion(regs.begin()->first, current());
@@ -192,7 +193,7 @@ struct IRGenCtx {
     }
 
     Result<SSARegisterHandle> lookupLocal(string_view name) {
-        return gen.lookupLocal(name, current());
+        return gen.lookupLocal(name);
     }
 
     Result<SSARegisterHandle> readLocal(string_view name) {
@@ -278,8 +279,8 @@ struct IRGenCtx {
         optional<string_view> label,
         std::function<Result<BaseBlock*>(SELF)> body
     ) {
-        auto startBlock = createBlock("loop-body", &current());
-        auto nextBlock1 = createBlock("loop-next", &current());
+        auto startBlock = createBlock("loop-header", &current());
+        auto nextBlock1 = createBlock("loop-exit", startBlock);
         startBlock->setLoopHeader(true);
 
         pushInstruction<instructions::Jump<CTX>>(startBlock->id());

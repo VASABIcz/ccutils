@@ -6,7 +6,7 @@ using namespace std;
 
 class SSARegisterHandle {
 public:
-    SSARegisterHandle(size_t graphId, size_t regId, bool valid);
+    SSARegisterHandle(size_t regId, bool valid);
 
     explicit SSARegisterHandle();
 
@@ -16,7 +16,7 @@ public:
 
     static SSARegisterHandle invalid();
 
-    static SSARegisterHandle valid(size_t graphId, size_t regId);
+    static SSARegisterHandle valid(size_t regId);
 
     [[nodiscard]] bool isValid() const;
 
@@ -24,7 +24,6 @@ public:
 
     [[nodiscard]] string toTextString() const;
 
-    size_t graphId;
     size_t registerId;
 private:
     bool mValid;

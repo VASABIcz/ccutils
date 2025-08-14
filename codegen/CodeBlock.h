@@ -34,13 +34,6 @@ public:
 
     [[nodiscard]] optional<size_t> previousId() const { return previous; }
 
-    optional<SSARegisterHandle> getRegisterHandleByName(string_view name) {
-        auto reg = getRegisterByName(name);
-        if (reg.has_value()) return (*reg)->getHandle();
-
-        return {};
-    }
-
     bool isTerminated() {
         return !isEmpty() && getInstruction(-1)->isTerminal();
     }
@@ -57,10 +50,6 @@ public:
 
     size_t id() const {
         return blockId;
-    }
-
-    span<CopyPtr<typename CTX::REG>> getRegisters() {
-        return registers;
     }
 
     static bool canPutInstruction(CodeBlock* block) {
@@ -168,16 +157,6 @@ public:
         return {instructions.data()+phiCount(), instructions.size()-phiCount()};
     }
 
-    const CTX::REG& getRecordConst(size_t id) const {
-        assertInBounds(registers, id);
-        return *registers[id];
-    }
-
-    CTX::REG& getRecord(size_t id) {
-        assertInBounds(registers, id);
-        return *registers[id];
-    }
-
     void removeInstruction(const CopyPtr<IRInstruction<CTX>>& inst) {
         erase_if(instructions, [&](auto& it) { return it.get() == inst.get(); });
     }
@@ -188,10 +167,6 @@ public:
 
     void removeInstruction(SSARegisterHandle tgt) {
         erase_if(instructions, [&](auto& it) { return it->target == tgt; });
-    }
-
-    const vector<CopyPtr<typename CTX::REG>>& getRegistersConst() const {
-        return registers;
     }
 
     SSARegisterHandle getHandle(const CTX::REG& reg) const {
@@ -224,16 +199,6 @@ public:
         mIsLoopHeader = isHeader;
     }
 
-    optional<typename CTX::REG*> getRegisterByName(string_view name) {
-        for (auto& reg : views::reverse(registers)) {
-            if (reg->name == name) {
-                return reg.get();
-            }
-        }
-
-        return {};
-    }
-
     [[nodiscard]] vector<SSARegisterHandle> getArgRegisters() const {
         vector<SSARegisterHandle> buf;
 
@@ -261,11 +226,9 @@ public:
     }*/
 
     optional<size_t> previous{}; // ment previous scope in the same level (used for var lookup)
-    vector<CopyPtr<typename CTX::REG>> registers{};
     bool mIsLoopHeader = false;
 
     void push(unique_ptr<IRInstruction<CTX>> instruction) {
-        assert(not instruction->target.isValid() || instruction->target.graphId == id());
         instructions.emplace_back(std::move(instruction));
     }
 
@@ -275,17 +238,6 @@ public:
 
     void insert(unique_ptr<IRInstruction<CTX>> instruction, size_t id) {
         instructions.insert(instructions.begin()+id, std::move(instruction));
-    }
-
-    SSARegisterHandle pushRegister(unique_ptr<typename CTX::REG> reg) {
-        reg->id = registers.size();
-        reg->setBlockId(id());
-
-        auto hand = reg->getHandle();
-
-        registers.push_back(std::move(reg));
-
-        return hand;
     }
 
     template<typename T, typename ...Args>

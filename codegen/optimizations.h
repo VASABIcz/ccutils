@@ -98,8 +98,10 @@ bool optimizeAssign(typename CTX::IRGEN& gen) {
         auto value = assign->value;
         auto t = gen.getRecord(tgt);
         auto v = gen.getRecord(value);
-        if (t.getPrevious().has_value() && v.getPrevious().has_value()) PANIC();
-        if (v.getPrevious().has_value()) PANIC();
+
+        // we don't know which ancestor to pick
+        if (t.getPrevious().has_value() && v.getPrevious().has_value()) return true;
+        if (v.getPrevious().has_value()) return true;
 
 
         replaceInstr<CTX>(gen, tgt, set{value});

@@ -68,16 +68,16 @@ public:
         return graph.generateNewVersion(previousHandle, block);
     }
 
-    Result<SSARegisterHandle> lookupLocal(string_view name, BaseBlock& _block) {
-        auto res = lookupOptionalLocal(name, _block);
+    Result<SSARegisterHandle> lookupLocal(string_view name) {
+        auto res = lookupOptionalLocal(name);
         if (not res.has_value())
             return FAIL("could not find variable: {}", name);
         return *res;
         // return EXCEPTION(lookupOptionalLocal(name, _block), stringify("could not find variable: {}", name));
     }
 
-    optional<SSARegisterHandle> lookupOptionalLocal(string_view name, BaseBlock& _block) {
-        return graph.lookupOptionalLocal(name, _block);
+    optional<SSARegisterHandle> lookupOptionalLocal(string_view name) {
+        return graph.lookupOptionalLocal(name);
     }
 
     void markUse(SSARegisterHandle handle) {

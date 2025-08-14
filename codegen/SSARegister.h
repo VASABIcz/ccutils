@@ -43,7 +43,7 @@ public:
     }
 
     SSARegisterHandle getHandle() const {
-        return SSARegisterHandle::valid(blockId, id);
+        return SSARegisterHandle::valid(id);
     }
 
     void setPrevious(SSARegisterHandle prev) {

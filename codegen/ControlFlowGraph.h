@@ -137,12 +137,12 @@ struct ControlFlowGraph {
         auto cpy = previous.copy();
         cpy.setPrevious(previousHandle);
 
-        return block.pushRegister(make_unique<typename CTX::REG>(cpy));
+        return pushRegister(make_unique<typename CTX::REG>(cpy));
     }
 
     CTX::REG& getRoot(SSARegisterHandle target) {
         assert(target.isValid());
-        auto* current = &getBlock(target.graphId).getRecord(target.registerId);
+        auto* current = &getRecord(target);
 
         while (!current->isRoot()) {
             auto t1 = current->getPrevious();
@@ -156,9 +156,7 @@ struct ControlFlowGraph {
     CTX::REG& getRecord(SSARegisterHandle target) {
         assert(target.isValid());
 
-        auto& block = getBlock(target.graphId);
-
-        auto& reg = block.getRecord(target.registerId);
+        auto& reg = getRecord(target.registerId);
 
         assert(reg.getHandle() == target);
 
@@ -172,29 +170,26 @@ struct ControlFlowGraph {
     }
 
     void printRegisters() {
-        for (const auto& block : validNodes()) {
-            for (const auto& reg : block->getRegistersConst()) {
-                auto root = getRoot(reg->getHandle()).getHandle();
-                println("id: {} - name: {} - parent: {} - type: {} - size: {}", reg->getHandle().toString(), reg->name, root == reg->getHandle() ? "_" : root.toString(), reg->typeString(), reg->sizeBytes());
-            }
+        for (const auto& reg : getRegistersConst()) {
+            auto root = getRoot(reg->getHandle()).getHandle();
+            println("id: {} - name: {} - parent: {} - type: {} - size: {}", reg->getHandle().toString(), reg->name, root == reg->getHandle() ? "_" : root.toString(), reg->typeString(), reg->sizeBytes());
         }
     }
 
     const CTX::REG& getRecordConst(SSARegisterHandle target) const {
         assert(target.isValid());
-        const auto& block = getBlockConst(target.graphId);
 
-        return block.getRecordConst(target.registerId);
+        return getRecordConst(target.registerId);
     }
 
     const CTX::REG& getRootConst(SSARegisterHandle target) const {
         assert(target.isValid());
-        const auto* current = &getBlockConst(target.graphId).getRecordConst(target.registerId);
+        const auto* current = &getRecordConst(target.registerId);
 
         while (!current->isRoot()) {
             auto t1 = current->getPrevious();
             assert(t1.has_value());
-            current = &getBlockConst(t1->graphId).getRecordConst(t1->registerId);
+            current = &getRecordConst(t1->registerId);
         }
 
         return *current;
@@ -551,7 +546,7 @@ struct ControlFlowGraph {
         auto getBlockRanges = [&](size_t blockId) -> pair<size_t, size_t> {
             auto start = instructionRangeOffset[blockId];
             auto instructionCount = getBlockConst(blockId).instructionCount();
-            assert(instructionCount > 0);
+            // assert(instructionCount > 0);
             // it theoretically should make sense bcs views::iota iterates by (start...<end) and we add +1 at the place
             // but start + instructionCount gives index 1 larger than possible
             // so we should output (start..end) not (start..end+1)
@@ -734,8 +729,7 @@ struct ControlFlowGraph {
             // we should do block.getPredecessors and iterate until we get to root ignoring already visited
             // if we encounter IF/ELSE it wont actualy affect us bcs if they modify regs then phi function will be generated after them
             for (const auto& regHandle : currentBlock->getInstructions() | views::transform([&](const CopyPtr<IRInstruction<CTX>>& it) { return it->target; }) | views::filter([](const SSARegisterHandle& it) { return it.isValid(); }) | views::reverse) {
-                assert(regHandle.graphId == currentBlock->id());
-                auto& reg = currentBlock->getRecordConst(regHandle.registerId);
+                auto& reg = getRecordConst(regHandle.registerId);
                 if (reg.isTemp()) continue;
 
                 if (reg.getPrevious().has_value()) {
@@ -760,21 +754,58 @@ struct ControlFlowGraph {
         return oldes;
     }
 
-    optional<SSARegisterHandle> lookupOptionalLocal(string_view name, BaseBlock& _block) {
-        BaseBlock* block = &_block;
-
-        while (!block->getRegisterByName(name).has_value()) {
-            if (!block->previousId().has_value()) {
-                return {};
-            }
-
-            block = &getBlock(*block->previousId());
-        }
-
-        return block->getRegisterHandleByName(name);
+    optional<SSARegisterHandle> lookupOptionalLocal(string_view name) {
+        auto res = this->getRegisterByName(name);
+        if (not res.has_value()) return {};
+        return (*res)->getHandle();
     }
 
+    optional<SSARegisterHandle> getRegisterHandleByName(string_view name) {
+        auto reg = getRegisterByName(name);
+        if (reg.has_value()) return (*reg)->getHandle();
+
+        return {};
+    }
+
+    SSARegisterHandle pushRegister(unique_ptr<typename CTX::REG> reg) {
+        reg->id = registers.size();
+
+        auto hand = reg->getHandle();
+
+        registers.push_back(std::move(reg));
+
+        return hand;
+    }
+
+    span<CopyPtr<typename CTX::REG>> getRegisters() {
+        return registers;
+    }
+
+    optional<typename CTX::REG*> getRegisterByName(string_view name) {
+        for (auto& reg : views::reverse(registers)) {
+            if (reg->name == name) {
+                return reg.get();
+            }
+        }
+
+        return {};
+    }
+
+    const vector<CopyPtr<typename CTX::REG>>& getRegistersConst() const {
+        return registers;
+    }
+
+    const CTX::REG& getRecordConst(size_t id) const {
+        assertInBounds(registers, id);
+        return *registers[id];
+    }
+
+    CTX::REG& getRecord(size_t id) {
+        assertInBounds(registers, id);
+        return *registers[id];
+    }
 
 private:
     vector<CopyPtr<BaseBlock>> nodes;
+    vector<CopyPtr<typename CTX::REG>> registers{};
 };
