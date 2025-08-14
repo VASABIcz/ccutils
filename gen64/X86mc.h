@@ -172,6 +172,11 @@ class X86mc {
 public:
     explicit X86mc(vector<u8>& bytes): bytes(bytes) {}
 
+    void syscall() {
+        pushBack(0x0F);
+        pushBack(0x05);
+    }
+
     template<typename T>
     ImmSpace writeImmValue(T b) {
         auto current = currentImm(sizeof b);

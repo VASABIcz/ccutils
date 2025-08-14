@@ -23,13 +23,13 @@ struct ElfReAllocation {
     enum Type : u32 {
         R_X86_64_NONE = 0,
         R_X86_64_64 = 1, // S + A
-        R_AMD64_PC32 = 2, // S + A - P
+        R_AMD64_PC32 = 2, // S + A - P => SOURCE+ADEND - IP
     };
 
     u64 address;
     u32 type;
     u32 symbol;
-    u64 addend;
+    i64 addend;
 };
 
 struct ElfSymbol {
@@ -344,19 +344,16 @@ struct ElfBuilder {
     };
 
     struct SymbolBuilder {
-        std::vector <ElfSymbol> symbols;
+        std::vector<ElfSymbol> symbols;
         bool isFreezed = false;
 
         SymbolBuilder() {
-            symbols.push_back(
-                    ElfSymbol{0, (u8) ElfSymbol::Type::None | ElfSymbol::Bind::Local, ElfSymbol::Other::Default, 0, 0,
-                              0});
+            symbols.push_back(ElfSymbol{0, (u8) ElfSymbol::Type::None | ElfSymbol::Bind::Local, ElfSymbol::Other::Default, 0, 0, 0});
         }
 
         void putGlobalSymbol(u32 name, u16 sectionId, u32 offset) {
             assert(not isFreezed);
-            auto sym = ElfSymbol{(u32) name, (u8) ElfSymbol::Type::None | ElfSymbol::Bind::Global,
-                                 ElfSymbol::Other::Default, sectionId, offset, 0};
+            auto sym = ElfSymbol{(u32) name, (u8) ElfSymbol::Type::None | ElfSymbol::Bind::Global, ElfSymbol::Other::Default, sectionId, offset, 0};
 
             symbols.push_back(sym);
         }
@@ -405,8 +402,8 @@ struct ElfBuilder {
 
         }
 
-        void addRealocation(size_t offset, ElfReAllocation::Type type1, u32 symbolId) {
-            relocation.push_back(ElfReAllocation{offset, type1, symbolId, 0});
+        void addRealocation(size_t offset, ElfReAllocation::Type type1, u32 symbolId, i64 adend) {
+            relocation.push_back(ElfReAllocation{offset, type1, symbolId, adend});
         }
 
         void bind(ElfSection *sec, u16 namesSectionId, u16 bytesSectionId) {
