@@ -478,7 +478,20 @@ public:
     void restoreRegState(vector<pair<x86::X64Register, optional<size_t>>>& regs);
 
     template<typename... Args, typename F>
-    void withRegs(F fan, Args... args);
+    void withRegs(F fan, Args... args) {
+        set<x86::X64Register> clobered;
+        vector<pair<x86::X64Register, optional<size_t >>> toRestore;
+
+        // put all reg args to clobbered to prevent them from being allocated
+        for (auto handle : {args...}) {
+            if (allocator.isStack(handle)) continue;
+            clobered.insert(allocator.getReg(handle));
+        }
+
+        fan(idk(args, clobered, toRestore)...);
+
+        restoreRegState(toRestore);
+    }
 
     void movRegToHandle(size_t dst, x86::X64Register src);
 

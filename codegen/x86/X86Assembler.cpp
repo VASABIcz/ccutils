@@ -351,6 +351,20 @@ void X86Assembler::divInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
     });
 }
 
+void X86Assembler::modInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) {
+    withSpecificReg(x86::Rax, [&] {
+        withSpecificReg(x86::Rdx, [&] {
+            withSpecificReg(x86::Rcx, [&] {
+                movHandleToReg(x86::Rcx, right);
+                movHandleToReg(x86::Rax, left);
+                mc.cqo();
+                mc.signedDivide(x86::Rcx);
+                movRegToHandle(dest, x86::Rdx);
+            });
+        });
+    });
+}
+
 void X86Assembler::shlInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
     movReg(dest, left);
 
@@ -372,19 +386,6 @@ void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
             mc.shiftRightByCl(dstReg);
             movRegToHandle(dest, dstReg);
         }, dest);
-    });
-}
-
-void X86Assembler::modInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) {
-    withSpecificReg(x86::Rax, [&] {
-        withSpecificReg(x86::Rdx, [&] {
-            movHandleToReg(x86::Rax, left);
-            mc.cqo();
-            withRegs([&](x86::X64Register rhsReg) {
-                mc.signedDivide(rhsReg);
-            }, right);
-            movRegToHandle(dest, x86::Rdx);
-        });
     });
 }
 
@@ -451,10 +452,12 @@ void X86Assembler::withSpecificReg(const x86::X64Register& reg, const function<v
     }
 
     // bad :( we need to move it to stack
-    // TODO maybe use allocate stack (check if free stack slot)
-    mc.push(reg);
+    auto slot = allocateStack(REG_SIZE);
+    auto offset = allocator.getStackOffset(slot);
+    mc.writeStack(offset, reg);
     callback();
-    mc.pop(reg);
+    mc.readStack(offset, reg);
+    allocator.freeHandle(slot);
 }
 
 void X86Assembler::movHandleToReg(const x86::X64Register& dst, Assembler::RegisterHandle src) {
@@ -876,22 +879,6 @@ void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, 
     finallCallbackWrapper(obj, lambda, std::forward<Args>(idk2(clobbered, restorCtx))...);
 
     restoreRegState(restorCtx);
-}
-
-template<typename... Args, typename F>
-void X86Assembler::withRegs(F fan, Args... args) {
-    set<x86::X64Register> clobered;
-    vector<pair<x86::X64Register, optional<size_t >>> toRestore;
-
-    // put all reg args to clobbered to prevent them from being allocated
-    for (auto handle : {args...}) {
-        if (allocator.isStack(handle)) continue;
-        clobered.insert(allocator.getReg(handle));
-    }
-
-    fan(idk(args, clobered, toRestore)...);
-
-    restoreRegState(toRestore);
 }
 
 void X86Assembler::addressOf(Assembler::RegisterHandle tgt, Assembler::RegisterHandle obj) {
