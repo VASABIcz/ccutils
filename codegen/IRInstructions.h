@@ -685,13 +685,33 @@ namespace instructions {
         }
     };
 
-    /// stack allocation
+    /// stack allocation - allocate nB sized value
     template<typename CTX>
     struct Alloca: public NamedIrInstruction<"alloca", CTX> {
         PUB_VIRTUAL_COPY(Alloca)
         size_t size;
 
         Alloca(SSARegisterHandle target, size_t size): NamedIrInstruction<"alloca", CTX>(target), size(size) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+        }
+
+        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+            this->basePrint(stream, "{}", size);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            // handled by CodeGen
+        }
+    };
+
+    /// stack allocation - allocate **Pointer** to nB sized memory location
+    template<typename CTX>
+    struct AllocaPtr: public NamedIrInstruction<"alloca", CTX> {
+        PUB_VIRTUAL_COPY(AllocaPtr)
+        size_t size;
+
+        AllocaPtr(SSARegisterHandle target, size_t size): NamedIrInstruction<"alloca", CTX>(target), size(size) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
