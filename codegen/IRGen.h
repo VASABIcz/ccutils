@@ -39,7 +39,7 @@ public:
 
     BaseBlock& createBlock(string_view tag) { return graph.createBlock(stringify("{}::{}", tag, graph.nodeCount())); }
 
-    BaseBlock& createBlock(string_view tag, BaseBlock& previous) { auto& v = graph.createBlock(stringify("{}::{}", tag, graph.nodeCount())); v.setPrevious(previous.blockId); return v;}
+    BaseBlock& createBlock(string_view tag, BaseBlock& previous) { auto& v = graph.createBlock(stringify("{}::{}", tag, graph.nodeCount())); return v;}
 
     CTX::REG& getRoot(SSARegisterHandle target) { return graph.getRoot(target); }
 
@@ -53,7 +53,7 @@ public:
         graph.printRegisters();
         for (auto& block : nodes()) {
             const auto & instructions = block->getInstructions();
-            println("{} - {}", block->tag, block->previousId().has_value() ? to_string(*block->previousId()) : "null");
+            println("{}", block->tag);
             if (instructions.empty()) {
                 println("  _ := TERMINAL");
             }

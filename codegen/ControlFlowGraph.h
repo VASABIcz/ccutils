@@ -4,6 +4,7 @@
 
 #include "CodeBlock.h"
 #include "../utils/Errorable.h"
+#include "LiveRanges.h"
 
 template<typename CTX>
 struct ControlFlowGraph {
@@ -495,14 +496,57 @@ struct ControlFlowGraph {
         return buf;
     }
 
-    map<SSARegisterHandle, vector<bool>> liveRanges(vector<size_t> blocks) const {
+    map<SSARegisterHandle, vector<bool>> simpleLiveRanges(vector<size_t> blocks) {
         map<SSARegisterHandle, vector<bool>> ranges;
-        map<SSARegisterHandle, size_t> registerStarts;
+        auto [instructionCount, instructionRangeOffset] = blockOffsets(blocks);
 
+        const auto render = [&](SSARegisterHandle reg, size_t start, size_t end) {
+            if (not ranges.contains(reg)) {
+                ranges[reg] = std::vector<bool>();
+                ranges[reg].resize(instructionCount, false);
+            }
+
+            for (auto i = start; i <= end; i++) {
+                ranges[reg][i] = true;
+            }
+        };
+
+        map<SSARegisterHandle, size_t> regStarts;
+
+        forEachInstruction([&](IRInstruction<CTX>& inst, CodeBlock<CTX>& block, auto n) {
+            auto idex = instructionRangeOffset[block.id()]+n;
+            for (auto reg : inst.allValidRegs()) {
+                if (not regStarts.contains(reg)) {
+                    regStarts[reg] = idex;
+                    render(reg, idex, idex);
+                } else {
+                    auto [start, end] = minmax(regStarts[reg], idex);
+                    render(reg, start, end);
+                }
+            }
+        });
+
+        LiveRanges l{ranges};
+
+        for (auto b : blocks) {
+            if (getBlock(b).isLoopHeader()) {
+                auto bb = getLastBlockOfLoop(b, blocks);
+
+                auto start = instructionRangeOffset[b];
+                auto end = (instructionRangeOffset[bb]+ getBlock(bb).instructions.size())-1;
+
+                for (auto ins : l.intersections({start, end})) {
+                    l.appendRange(ins, start, end, true);
+                }
+            }
+        }
+
+        return l.currentLiveRanges;
+    }
+
+    std::pair<size_t, std::map<size_t, size_t>> blockOffsets(const std::vector<size_t>& blocks) const {
         size_t instructionCount = 0;
         map<size_t, size_t> instructionRangeOffset;
-
-        map<size_t, set<SSARegisterHandle>> liveIns;
 
         for (auto block : blocks) {
             instructionRangeOffset[block] = instructionCount;
@@ -510,6 +554,35 @@ struct ControlFlowGraph {
             auto instCount = getBlockConst(block).instructions.size();
             instructionCount += instCount;
         }
+
+        return {instructionCount, instructionRangeOffset};
+    }
+
+    size_t getLastBlockOfLoop(size_t blockId, std::span<size_t> blocks) const {
+        // get incoming blocks to header
+        // find the farthest block in liner representation
+        // TODO i think we know the information in previous pass so we can just pass it back?
+        auto ingress = lookupIngress(blockId) | views::filter([&](auto it) { return contains(blocks, it); }) | views::transform([&](auto it) { return make_pair(it, indexOf(blocks, it)); });
+        assert(not ingress.empty());
+        auto srcIndex = indexOf(blocks, blockId);
+
+        auto max = pair{ingress.front().first, difference(ingress.front().second, srcIndex)};
+        for (auto [ingId, ingIndex] : ingress) {
+            auto diff = difference(srcIndex, ingIndex);
+            if (diff >= max.second) max = {ingId, diff}; // it can happend that this returns the inbound block that isnt actualy part of the loop
+        }
+
+        return max.first;
+    };
+
+
+    map<SSARegisterHandle, vector<bool>> liveRanges(vector<size_t> blocks) const {
+        map<SSARegisterHandle, vector<bool>> ranges;
+        map<SSARegisterHandle, size_t> registerStarts;
+
+        map<size_t, set<SSARegisterHandle>> liveIns;
+
+        auto [instructionCount, instructionRangeOffset] = blockOffsets(blocks);
 
         // NOTE bypasssStart ignores start index of register needed for correct loop handling
         auto addRange = [&](SSARegisterHandle handle, size_t s, size_t e, bool bypassStart = false) {
@@ -571,23 +644,6 @@ struct ControlFlowGraph {
 
         auto isLoopHeader = [&](size_t blockId) -> bool {
             return getBlock(blockId).isLoopHeader();
-        };
-
-        auto getLastBlockOfLoop = [&](size_t blockId) -> size_t {
-            // get incoming blocks to header
-            // find the farthest block in liner representation
-            // TODO i think we know the information in previous pass so we can just pass it back?
-            auto ingress = lookupIngress(blockId) | views::filter([&](auto it) { return contains(blocks, it); }) | views::transform([&](auto it) { return make_pair(it, indexOf(blocks, it)); });
-            assert(not ingress.empty());
-            auto srcIndex = indexOf(blocks, blockId);
-
-            auto max = pair{ingress.front().first, difference(ingress.front().second, srcIndex)};
-            for (auto [ingId, ingIndex] : ingress) {
-                auto diff = difference(srcIndex, ingIndex);
-                if (diff >= max.second) max = {ingId, diff}; // it can happend that this returns the inbound block that isnt actualy part of the loop
-            }
-
-            return max.first;
         };
 
         auto getBlockSuccesors = [&](size_t blockId) -> vector<size_t> {
@@ -663,7 +719,7 @@ struct ControlFlowGraph {
                     //      loopEnd = last block of the loop starting at b
                     //      for each opd in live do
                     //          intervals[opd].addRange(b.from, loopEnd.to)
-                    auto loopEnd = getLastBlockOfLoop(blockId);
+                    auto loopEnd = getLastBlockOfLoop(blockId, blocks);
                     // println("[LIVE] end for {} is {}", blockId, loopEnd);
                     auto loopEndEnd = getBlockRanges(loopEnd).second;
                     for (auto reg : live) {
@@ -680,24 +736,20 @@ struct ControlFlowGraph {
         return ranges;
     }
 
-    void commitReachableDefs(map<SSARegisterHandle, instructions::PhiFunction<CTX>*> phis, const BaseBlock& endBlock) const {
-        auto end = reachableDefinitions(endBlock);
-
-        for (const auto& [fst, snd]: end) {
-            if (phis.contains(fst)) {
-                auto* phiRef = phis[fst];
-                // if (phiRef->target == snd) continue;
-                // if (gen.getRecord(phiRef->getVersions()[0]).version > gen.getRecord(fst).version) return;
-
-                phiRef->pushVersion(snd, endBlock.blockId);
-            }
-        }
-    }
-
     void forEachInstruction(std::function<void(IRInstruction<CTX>&, CodeBlock<CTX>&)> body) {
         for (auto& block : this->validNodesConst()) {
             for (auto& inst : block->getInstructionsMut()) {
                 body(*inst, *block);
+            }
+        }
+    }
+
+    void forEachInstruction(std::function<void(IRInstruction<CTX>&, CodeBlock<CTX>&, size_t n)> body) {
+        for (auto& block : this->validNodesConst()) {
+            size_t n = 0;
+            for (auto& inst : block->getInstructionsMut()) {
+                body(*inst, *block, n);
+                n += 1;
             }
         }
     }
@@ -707,6 +759,12 @@ struct ControlFlowGraph {
             for (auto& inst : block->getInstructionsMut()) {
                 body(*inst);
             }
+        }
+    }
+
+    void forEachBlock(std::function<void(CodeBlock<CTX>&)> body) {
+        for (auto& block : this->validNodesConst()) {
+            body(*block);
         }
     }
 
@@ -803,6 +861,159 @@ struct ControlFlowGraph {
     CTX::REG& getRecord(size_t id) {
         assertInBounds(registers, id);
         return *registers[id];
+    }
+
+    static void intersect(std::set<size_t>& self, const std::set<size_t>& other) {
+        std::vector<size_t> toRemove;
+
+        for (auto s : self) {
+            if (other.contains(s)) continue;
+            toRemove.push_back(s);
+        }
+
+        for (auto rem : toRemove) {
+            self.erase(rem);
+        }
+    }
+
+    void genPhiRec(size_t reg, const std::set<SSARegisterHandle>& badBoys, std::map<SSARegisterHandle, SSARegisterHandle> reachable, std::set<size_t>& visited) {
+        if (visited.contains(reg)) return;
+        visited.insert(reg);
+
+        getBlock(reg).forEach([&](IRInstruction<CTX>& inst) {
+            if (not inst.template is<instructions::PhiFunction>()) {
+                inst.visitSrcs([&](SSARegisterHandle& hand) {
+                    if (badBoys.contains(hand) && reachable.contains(hand)) {
+                        hand = reachable[hand];
+                    }
+                });
+            }
+
+            auto oldTgt = inst.target;
+            if (badBoys.contains(oldTgt)) {
+                auto nH = pushRegister(std::make_unique<typename CTX::REG>(getRecord(inst.target).clone()));
+                inst.target = nH;
+                reachable[oldTgt] = nH;
+            }
+        });
+
+        for (auto tgt : getBlock(reg).getTargets()) {
+            for (instructions::PhiFunction<CTX>* phi : getBlock(tgt).getPhiSpan()) {
+                auto ver = UNWRAP(phi->getBySource(reg));
+                if (reachable.contains(ver)) {
+                    println("setting phi {} -> {} for {} / {}", reg, tgt, ver, reachable[ver]);
+                    phi->pushVersion(reachable[ver], reg);
+                } else {
+                    println("setting phi {} -> {} for {}", reg, tgt, ver);
+                    assert(badBoys.contains(ver));
+                    phi->remove(reg);
+                }
+            }
+        }
+
+        println("WAT DE FAK {} {}", reg, reachable);
+
+        for (auto tgt : getBlock(reg).getTargets()) {
+            auto s = reachable;
+            genPhiRec(tgt, badBoys, reachable, visited);
+            assert(s == reachable);
+        }
+    }
+
+    void genPhis() {
+        auto preds = predecesors();
+        auto badBoys = getBadBoys();
+
+        forEachBlock([&](BaseBlock& block) {
+            if (preds[block.id()].size() > 1) {
+                for (auto bad : badBoys) {
+                    std::map<size_t, SSARegisterHandle> imps;
+
+                    for (auto pred : preds[block.id()]) {
+                        imps[pred] = bad;
+                    }
+
+                    block.template insertInst<instructions::PhiFunction>(0, bad, imps);
+                }
+            }
+        });
+
+        std::set<size_t> visited;
+
+        std::map<SSARegisterHandle, SSARegisterHandle> reachable;
+        genPhiRec(root().id(), badBoys, reachable, visited);
+    }
+
+    BaseBlock& root() {
+        return *this->nodes[0];
+    }
+
+    static std::map<size_t, std::set<size_t>> calcDom(std::set<size_t> nodes, std::function<std::vector<size_t>(size_t)> getPredecessors) {
+        bool didChange = true;
+        std::map<size_t, std::set<size_t>> res;
+
+        while (didChange) {
+            didChange = false;
+            for (auto vertex : nodes) {
+                auto preds = getPredecessors(vertex);
+                auto base = res[preds[0]];
+                for (auto pred : preds | views::drop(1)) {
+                    intersect(base, res[pred]);
+                }
+                base.insert(vertex);
+                if (base != res[vertex]) {
+                    res[vertex] = base;
+                    didChange = true;
+                }
+            }
+        }
+
+        return res;
+    }
+
+    static std::map<size_t, std::set<size_t>> doStuff(size_t root, std::function<std::vector<size_t>(size_t)> succesors) {
+        std::map<size_t, std::set<size_t>> res;
+
+        // doStuff(root, res, {}, succesors);
+
+        return res;
+    }
+
+    std::map<size_t, std::set<size_t>> predecesors() {
+        std::map<size_t, std::set<size_t>> preds;
+        forEachBlock([&](BaseBlock& block) {
+            for (auto tgt : block.getTargets()) {
+                preds[tgt].insert(block.id());
+            }
+        });
+
+        return preds;
+    }
+
+    std::map<size_t, std::set<size_t>> domMomies() const {
+        std::map<size_t, std::set<size_t>> momies;
+
+        // doStuff(nodes[0]->id(), momies, {}, [&](size_t id) { return getBlockConst(id).getTargets(); });
+
+        return momies;
+    }
+
+
+    std::set<SSARegisterHandle> getBadBoys() {
+        std::set<SSARegisterHandle> found;
+        std::set<SSARegisterHandle> naughty;
+
+        forEachInstruction([&](IRInstruction<CTX>& inst) {
+            for (auto dst : inst.validDests()) {
+                if (found.contains(dst)) {
+                    naughty.insert(dst);
+                } else {
+                    found.insert(dst);
+                }
+            }
+        });
+
+        return naughty;
     }
 
 private:

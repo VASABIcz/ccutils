@@ -23,6 +23,12 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         std::cout << std::endl;
     }
 
+    std::set<SSARegisterHandle> validDests() const {
+        if (!target.isValid()) return {};
+
+        return {target};
+    }
+
     virtual void print(CTX::IRGEN& gen, std::ostream& stream) = 0;
 
     virtual void generate(CTX::GEN& gen) = 0;
@@ -38,6 +44,12 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     template<class T>
     [[nodiscard]] bool is() const {
         bool b = dynamic_cast<const T *>(this) != nullptr;
+        return b;
+    }
+
+    template<template<typename> typename T>
+    [[nodiscard]] bool is() const {
+        bool b = dynamic_cast<const T<CTX>*>(this) != nullptr;
         return b;
     }
 
@@ -88,6 +100,15 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         visitSrcs([&](auto x) {
             s.push_back(x);
         });
+        return s;
+    }
+
+    std::set<SSARegisterHandle> allValidRegs() {
+        std::set<SSARegisterHandle> s;
+        visitSrcs([&](auto x) {
+            if (x.isValid()) s.insert(x);
+        });
+        if (target.isValid()) s.insert(target);
         return s;
     }
 private:

@@ -282,7 +282,7 @@ public:
 
     void writeJmp(size_t id);
 
-    void withSpecificReg(const x86::X64Register& reg, const function<void()>& callback);
+    void withSpecificReg(const x86::X64Register& reg, const function<void()>& callback, std::initializer_list<size_t> exclude);
 
     size_t preserveCalleeRegs(const std::function<x86::X64Register::SaveType(x86::X64Register)>& save);
 

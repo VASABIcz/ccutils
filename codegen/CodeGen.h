@@ -89,7 +89,7 @@ public:
     }
 
     Result<void> gen() {
-        optimizeAssign<CTX>(irGen);
+        // optimizeAssign<CTX>(irGen);
         // optimizePhis<CTX>(irGen);
         // optimizePhis<CTX>(irGen);
         // optimizePhis<CTX>(irGen);
@@ -169,7 +169,7 @@ public:
 
 // http://www.christianwimmer.at/Publications/Wimmer10a/Wimmer10a.pdf
     map<SSARegisterHandle, vector<bool>> liveRanges(vector<size_t> blocks) const {
-        return irGen.graph.liveRanges(blocks);
+        return irGen.graph.simpleLiveRanges(blocks);
     }
 
     void generateCodeBlock(const BaseBlock& block) {
@@ -181,7 +181,7 @@ public:
         currentBlock = block.blockId;
 
         if (instructions.empty()) {
-            assembler.generateRet();
+            // assembler.generateRet();
             return;
         }
 

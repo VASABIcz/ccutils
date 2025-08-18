@@ -143,6 +143,10 @@ namespace instructions {
             }
         }
 
+        void remove(size_t block) {
+            versions.erase(block);
+        }
+
         [[nodiscard]] vector<SSARegisterHandle> getAllVersions() const {
             vector<SSARegisterHandle> buf;
 
@@ -707,11 +711,11 @@ namespace instructions {
 
     /// stack allocation - allocate **Pointer** to nB sized memory location
     template<typename CTX>
-    struct AllocaPtr: public NamedIrInstruction<"alloca", CTX> {
+    struct AllocaPtr: public NamedIrInstruction<"alloca_ptr", CTX> {
         PUB_VIRTUAL_COPY(AllocaPtr)
         size_t size;
 
-        AllocaPtr(SSARegisterHandle target, size_t size): NamedIrInstruction<"alloca", CTX>(target), size(size) {}
+        AllocaPtr(SSARegisterHandle target, size_t size): NamedIrInstruction<"alloca_ptr", CTX>(target), size(size) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }

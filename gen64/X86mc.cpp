@@ -156,7 +156,7 @@ void X86mc::pop(const x86::X64Register& dest) {
 void X86mc::cmpI(CmpType type, const x86::X64Register& dest, const x86::X64Register& left, const x86::X64Register& right) {
     writeRegInst(X64Instruction::cmp, left, right);
     setCC(dest, type);
-    // writeMovZX8(dest, dest);
+    writeMovZX8(dest, dest);
 }
 
 void X86mc::push(const x86::X64Register& src) {

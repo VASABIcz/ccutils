@@ -341,14 +341,15 @@ void X86Assembler::movReg(Assembler::RegisterHandle dest, Assembler::RegisterHan
 void X86Assembler::divInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
     withSpecificReg(x86::Rax, [&] {
         withSpecificReg(x86::Rdx, [&] {
-            movHandleToReg(x86::Rax, left);
-            mc.cqo();
-            withRegs([&](x86::X64Register rhsReg) {
-                mc.signedDivide(rhsReg);
-            }, right);
-            movRegToHandle(dest, x86::Rax);
-        });
-    });
+            withSpecificReg(x86::Rcx, [&] {
+                movHandleToReg(x86::Rcx, right);
+                movHandleToReg(x86::Rax, left);
+                mc.cqo();
+                mc.signedDivide(x86::Rcx);
+                movRegToHandle(dest, x86::Rax);
+            }, {dest});
+        }, {dest});
+    }, {dest});
 }
 
 void X86Assembler::modInt(RegisterHandle dest, RegisterHandle left, RegisterHandle right) {
@@ -360,9 +361,9 @@ void X86Assembler::modInt(RegisterHandle dest, RegisterHandle left, RegisterHand
                 mc.cqo();
                 mc.signedDivide(x86::Rcx);
                 movRegToHandle(dest, x86::Rdx);
-            });
-        });
-    });
+            }, {dest});
+        }, {dest});
+    }, {dest});
 }
 
 void X86Assembler::shlInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
@@ -374,7 +375,7 @@ void X86Assembler::shlInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
             mc.shiftLeftByCl(dstReg);
             movRegToHandle(dest, dstReg);
         }, dest);
-    });
+    }, {dest});
 }
 
 void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHandle left, Assembler::RegisterHandle right) {
@@ -386,7 +387,7 @@ void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
             mc.shiftRightByCl(dstReg);
             movRegToHandle(dest, dstReg);
         }, dest);
-    });
+    }, {dest});
 }
 
 void X86Assembler::nop() {
@@ -432,7 +433,15 @@ X86Assembler::X86Assembler(span<size_t> argSizes, size_t retSize) : mc(bytes), a
     }
 }
 
-void X86Assembler::withSpecificReg(const x86::X64Register& reg, const function<void()>& callback) {
+void X86Assembler::withSpecificReg(const x86::X64Register& reg, const function<void()>& callback, std::initializer_list<size_t> exclude) {
+    bool isIdk = false;
+    for (auto r : exclude) {
+        if (!allocator.isStack(r) && allocator.getReg(r) == reg) {
+            isIdk = true;
+            break;
+        }
+    }
+
     // GOOD we can aquire it
     if (!allocator.isAcquired(reg)) {
         allocator.acquireSpecific(reg);
@@ -446,7 +455,7 @@ void X86Assembler::withSpecificReg(const x86::X64Register& reg, const function<v
         auto saved = allocator.acquireAny();
         mc.movReg(saved, reg);
         callback();
-        mc.movReg(reg, saved);
+        if (!isIdk) mc.movReg(reg, saved);
         allocator.freeReg(saved);
         return;
     }
@@ -456,7 +465,7 @@ void X86Assembler::withSpecificReg(const x86::X64Register& reg, const function<v
     auto offset = allocator.getStackOffset(slot);
     mc.writeStack(offset, reg);
     callback();
-    mc.readStack(offset, reg);
+    if (!isIdk) mc.readStack(offset, reg);
     allocator.freeHandle(slot);
 }
 

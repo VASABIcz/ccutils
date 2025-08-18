@@ -32,7 +32,7 @@ public:
 
     [[nodiscard]] vector<CopyPtr<IRInstruction<CTX>>>& getInstructionsMut() { return instructions; }
 
-    [[nodiscard]] optional<size_t> previousId() const { return previous; }
+    // [[nodiscard]] optional<size_t> previousId() const { return previous; }
 
     bool isTerminated() {
         return !isEmpty() && getInstruction(-1)->isTerminal();
@@ -46,6 +46,12 @@ public:
         push(std::move(instruction));
 
         return ptr;
+    }
+
+    void forEach(std::function<void(IRInstruction<CTX>&)> body) {
+        for (auto& node : instructions) {
+            body(*node);
+        }
     }
 
     size_t id() const {
@@ -177,10 +183,6 @@ public:
         return instructions.empty();
     }
 
-    void setPrevious(size_t prev) {
-        previous = prev;
-    }
-
     CodeBlock(string tag, size_t blockId) : tag(std::move(tag)), blockId(blockId) {
 
     }
@@ -225,7 +227,6 @@ public:
         return SSARegisterHandle::valid(blockId, id);
     }*/
 
-    optional<size_t> previous{}; // ment previous scope in the same level (used for var lookup)
     bool mIsLoopHeader = false;
 
     void push(unique_ptr<IRInstruction<CTX>> instruction) {
@@ -241,7 +242,17 @@ public:
     }
 
     template<typename T, typename ...Args>
-    unique_ptr<T> createInstruction(Args... args) {
-        return make_unique<T>(args...);
+    void insertInst(size_t id, Args&&... args) {
+        instructions.insert(instructions.begin()+id, CopyPtr<T>{createInstruction<T>(std::forward<Args>(args)...)});
+    }
+
+    template<template<typename> typename T, typename ...Args>
+    void insertInst(size_t id, Args&&... args) {
+        instructions.emplace(instructions.begin()+id, createInstruction<T<CTX>>(std::forward<Args>(args)...));
+    }
+
+    template<typename T, typename ...Args>
+    unique_ptr<T> createInstruction(Args&&... args) {
+        return make_unique<T>(std::forward<Args>(args)...);
     }
 };

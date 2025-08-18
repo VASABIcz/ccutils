@@ -178,6 +178,32 @@ public:
     }
 
     template<typename T>
+    static bool canFit(auto value) {
+        return value >= std::numeric_limits<T>::min() && value <= std::numeric_limits<T>::max();
+    }
+
+    void patchImm(ImmSpace tgt, size_t offset) {
+        auto s = (long long int)offset - (long long int)(tgt.offset);
+
+        if (tgt.size == 1) {
+            assert(canFit<i8>(s));
+            writeImmValue<i8>(s);
+        } else if (tgt.size == 2) {
+            assert(canFit<i16>(s));
+            writeImmValue<i16>(s);
+        } else if (tgt.size == 4) {
+            assert(canFit<i32>(s));
+            writeImmValue<i32>(s);
+        } else {
+            TODO();
+        }
+    }
+
+    size_t getOffset() {
+        return bytes.size();
+    }
+
+    template<typename T>
     ImmSpace writeImmValue(T b) {
         auto current = currentImm(sizeof b);
 
@@ -201,6 +227,37 @@ public:
         // rdtsc
         pushBack(0x0F);
         pushBack(0x31);
+    }
+
+    void linuxSysCall(size_t code) {
+        movFast(x86::Rax, code);
+        syscall();
+    }
+
+    constexpr static x86::X64Register SYSCALL0 = x86::Rdi;
+    constexpr static x86::X64Register SYSCALL1 = x86::Rsi;
+    constexpr static x86::X64Register SYSCALL2 = x86::Rdx;
+    constexpr static x86::X64Register SYSCALL3 = x86::R10;
+
+    void linuxSysCall(size_t code, size_t arg0) {
+        movFast(x86::Rax, code);
+        movFast(x86::Rdi, arg0);
+        syscall();
+    }
+
+    void linuxSysCall(size_t code, size_t arg0, size_t arg1) {
+        movFast(x86::Rax, code);
+        movFast(x86::Rdi, arg0);
+        movFast(x86::Rsi, arg1);
+        syscall();
+    }
+
+    void linuxSysCall(size_t code, size_t arg0, size_t arg1, size_t arg2) {
+        movFast(x86::Rax, code);
+        movFast(x86::Rdi, arg0);
+        movFast(x86::Rsi, arg1);
+        movFast(x86::Rdx, arg2);
+        syscall();
     }
 
     void writeRex(bool immediate64 = false, bool extDest = false, bool extSrc = false, bool extIndex = false);
@@ -924,6 +981,10 @@ public:
         pushBack(0x81);
         writeModMR(subj, x86::Seven);
         return this->writeImmValue(imm);
+    }
+
+    void negate(x86::X64Register v) {
+        TODO();
     }
 
     bool canFitToI8(i32 v) {

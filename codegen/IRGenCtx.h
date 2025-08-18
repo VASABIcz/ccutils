@@ -39,33 +39,6 @@ struct IRGenCtx {
         return true;
     }
 
-    /**
-     * nullptr is valid block AKA ignored
-     * */
-    void dumpPhis1(span<const CodeBlock<CTX>*> inbound) {
-        map<SSARegisterHandle, vector<pair<SSARegisterHandle, size_t>>> toBuildPhis;
-
-        for (auto incomingBlock: inbound) {
-            if (incomingBlock == nullptr) continue;
-            auto currenReachable = gen.graph.reachableDefinitions(*incomingBlock);
-
-            for (auto [key, value] : currenReachable) {
-                toBuildPhis[key].emplace_back(value, incomingBlock->blockId);
-            }
-        }
-
-        for (auto& phi : toBuildPhis) {
-            if (canOmmit(phi.second)) continue;
-
-            makePhi(phi.second);
-        }
-    }
-
-    void dumpPhis(std::initializer_list<const CodeBlock<CTX>*> inbound) {
-        std::vector<const CodeBlock<CTX>*> pepa(inbound);
-        dumpPhis1(pepa);
-    }
-
     bool isTerminated() {
         return isNullOrTerminated(currentBlock);
     }
@@ -119,28 +92,6 @@ struct IRGenCtx {
         return cpy;
     }
 
-    /// creates phi function in endBlock for each reachable variable of current
-    map<SSARegisterHandle, instructions::PhiFunction<CTX>*> createPhis(BaseBlock& endBlock) const {
-        auto phis = map<SSARegisterHandle, instructions::PhiFunction<CTX>*>();
-
-        auto reachableDefinitions = gen.graph.reachableDefinitions(current());
-        for (const auto& [root, child] : reachableDefinitions) {
-            array<pair<SSARegisterHandle, size_t>, 1> idk{pair<SSARegisterHandle, size_t>{child, currentBlock->blockId}};
-            auto idk1 = withBlock(&endBlock).makePhi(idk);
-            phis[root] = idk1.second;
-        }
-
-        return phis;
-    }
-
-    void commitReachableDefs(map<SSARegisterHandle, instructions::PhiFunction<CTX>*> phis, const BaseBlock& endBlock) const {
-        gen.graph.commitReachableDefs(std::move(phis), endBlock);
-    }
-
-    void commitReachableDefs(map<SSARegisterHandle, instructions::PhiFunction<CTX>*> phis) const {
-        gen.graph.commitReachableDefs(std::move(phis), current());
-    }
-
     [[nodiscard]] bool hasNext() const { return nextBlock != nullptr; }
 
     IRGenCtx::ValueBlockPair makeRet(SSARegisterHandle handle) {
@@ -154,30 +105,6 @@ struct IRGenCtx {
         this->nextBlock = other.nextBlock;
 
         return *this;
-    }
-
-    pair<SSARegisterHandle, instructions::PhiFunction<CTX>*> makePhi(span<pair<SSARegisterHandle, size_t>> regs) const {
-        for (auto idk : regs) {
-            (void)idk;
-            assert(idk.first.isValid());
-        }
-        auto temp = this->gen.generateNewVersion(regs.begin()->first, current());
-
-        auto& tempRec = gen.getRecord(temp);
-        assert(tempRec.getHandle() == temp);
-
-        for (std::weakly_incrementable auto _i : views::iota(0u, regs.size())) {
-            (void)_i;
-            tempRec.incUseCount();
-        }
-
-        for (const auto& reg: regs) {
-            gen.getRecord(reg.first).incUseCount();
-        }
-
-        auto ptr = current().template pushInstruction<instructions::PhiFunction<CTX>>(temp, regs);
-
-        return {temp, ptr};
     }
 
     [[nodiscard]] Result<size_t> getLoopBegin() const {
@@ -246,9 +173,6 @@ struct IRGenCtx {
         if (not isNullOrTerminated(elsBlockEnd)) {
             elsBlockEnd->template pushInstruction<instructions::Jump<CTX>>(nextBlock1->id());
         }
-        if (not isNullOrTerminated(nextBlock1)) {
-            this->withBlock(nextBlock1).dumpPhis({ifBlockEnd, elsBlockEnd});
-        }
         return nextBlock1;
     }
 
@@ -271,7 +195,6 @@ struct IRGenCtx {
             ifBlockEnd->template pushInstruction<instructions::Jump<CTX>>(nextBlock1->id());
         }
 
-        this->withBlock(nextBlock1).dumpPhis({ifBlockEnd, ctx1.currentBlock});
         return nextBlock1;
     }
 
@@ -284,13 +207,10 @@ struct IRGenCtx {
         startBlock->setLoopHeader(true);
 
         pushInstruction<instructions::Jump<CTX>>(startBlock->id());
-        // FIXME not sure what are we doing here
-        auto phis = this->createPhis(*startBlock);
 
         auto idk = withBlock(startBlock).withLoop(startBlock->id(), nextBlock1->id());
         BaseBlock* bodyEndBlock = TRY(body(idk));
         if (bodyEndBlock != nullptr) {
-            withBlock(bodyEndBlock).commitReachableDefs(phis);
             bodyEndBlock->template pushInstruction<instructions::Jump<CTX>>(startBlock->id());
         }
 
@@ -318,8 +238,6 @@ struct IRGenCtx {
     Result<BaseBlock*> makeContinue(optional<string_view> label) {
         assert(loopBegin.has_value());
         auto& block = this->getBlock(*loopBegin);
-        auto phis = block.getPhiFunctions();
-        this->commitReachableDefs(phis);
         this->pushInstruction<instructions::Jump<CTX>>(*loopBegin);
 
         return nullptr;
@@ -331,9 +249,6 @@ struct IRGenCtx {
 
     Result<BaseBlock*> makeBreak() {
         assert(loopEnd.has_value());
-        auto& block = this->getBlock(*loopEnd);
-        auto phis = block.getPhiFunctions();
-        this->commitReachableDefs(phis);
         this->pushInstruction<instructions::Jump>(*loopEnd);
 
         return nullptr;

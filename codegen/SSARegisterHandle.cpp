@@ -33,12 +33,12 @@ string SSARegisterHandle::toString() const {
     if (!isValid()) {
         return "_";
     }
-    return stringify("{}", registerId);
+    return stringify("#{}", registerId);
 }
 
 string SSARegisterHandle::toTextString() const {
     if (!isValid()) {
         return " _ ";
     }
-    return stringify("{}", registerId);
+    return stringify("#{}", registerId);
 }
