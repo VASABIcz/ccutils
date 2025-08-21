@@ -119,6 +119,14 @@ typedef int16_t i16;
 typedef int32_t i32;
 typedef int64_t i64;
 
+inline void putColor(auto&& s, unsigned char r, unsigned char g, unsigned char b) {
+    s << "\033[38;2;" << (int)r << ";" << (int)g << ";" << (int)b << "m";
+}
+
+inline void resetColor(auto&& s) {
+    s << "\033[39m\033[49m";
+}
+
 constexpr u8 operator ""_u8(unsigned long long value) {
     return static_cast<u8>(value);
 }
@@ -685,7 +693,7 @@ inline string readFile(const string& filePath) {
 #define vi_transform(pepa) views::transform([](auto&& it) pepa)
 
 // https://stackoverflow.com/questions/664014/what-integer-hash-function-are-good-that-accepts-an-integer-hash-key
-inline unsigned int hashInt(u64 x) {
+inline u64 hashInt(u64 x) {
     x = (x ^ (x >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
     x = (x ^ (x >> 27)) * UINT64_C(0x94d049bb133111eb);
     x = x ^ (x >> 31);
