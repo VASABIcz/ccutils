@@ -13,8 +13,8 @@ struct IRGenCtx {
     CTX::IRGEN& gen;
     BaseBlock* currentBlock;
     BaseBlock* nextBlock;
-    optional<size_t> loopBegin;
-    optional<size_t> loopEnd;
+    optional<BlockId> loopBegin;
+    optional<BlockId> loopEnd;
     // NOTE: mby make it return CodeBlock* + mby pass IrGenCtx&
     function<Result<void>(SELF*, string_view, size_t, SSARegisterHandle)> hookAssign;
     function<Result<SSARegisterHandle>(SELF*, string_view, size_t)> hookRead;
@@ -84,7 +84,7 @@ struct IRGenCtx {
         return cpy;
     }
 
-    [[nodiscard]] SELF withLoop(size_t begin, size_t end) const {
+    [[nodiscard]] SELF withLoop(BlockId begin, BlockId end) const {
         auto cpy = getSelf();
         cpy.loopBegin = begin;
         cpy.loopEnd = end;
@@ -107,13 +107,13 @@ struct IRGenCtx {
         return *this;
     }
 
-    [[nodiscard]] Result<size_t> getLoopBegin() const {
+    [[nodiscard]] Result<BlockId> getLoopBegin() const {
         if (!loopBegin.has_value()) return FAIL("continue used outside loop");
 
         return *loopBegin;
     }
 
-    [[nodiscard]] Result<size_t> getLoopEnd() const {
+    [[nodiscard]] Result<BlockId> getLoopEnd() const {
         if (!loopEnd.has_value()) return FAIL("break used outside loop");
 
         return *loopEnd;

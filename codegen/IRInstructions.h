@@ -101,10 +101,10 @@ namespace instructions {
             }
         }
 
-        PhiFunction(SSARegisterHandle target, map<size_t, SSARegisterHandle> versions) : NamedIrInstruction<"phi", CTX>(target),
+        PhiFunction(SSARegisterHandle target, map<BlockId, SSARegisterHandle> versions) : NamedIrInstruction<"phi", CTX>(target),
                                                                                          versions(std::move(versions)) {}
 
-        PhiFunction(SSARegisterHandle target, span<pair<SSARegisterHandle, size_t>> versions) : NamedIrInstruction<"phi", CTX>(target) {
+        PhiFunction(SSARegisterHandle target, span<pair<SSARegisterHandle, BlockId>> versions) : NamedIrInstruction<"phi", CTX>(target) {
             for (auto version: versions) {
                 this->versions.emplace(version.second, version.first);
             }
@@ -116,7 +116,7 @@ namespace instructions {
             // this should be nop
         }
 
-        void pushVersion(SSARegisterHandle handle, size_t block) {
+        void pushVersion(SSARegisterHandle handle, BlockId block) {
             versions[block] = handle;
         }
 
@@ -143,7 +143,7 @@ namespace instructions {
             }
         }
 
-        void remove(size_t block) {
+        void remove(BlockId block) {
             versions.erase(block);
         }
 
@@ -157,18 +157,18 @@ namespace instructions {
             return buf;
         }
 
-        map<size_t, SSARegisterHandle> getRawVersions() const {
+        map<BlockId, SSARegisterHandle> getRawVersions() const {
             return versions;
         }
 
-        optional<SSARegisterHandle> getBySource(size_t src) {
+        optional<SSARegisterHandle> getBySource(BlockId src) {
             if (not versions.contains(src)) return {};
 
             return versions[src];
         }
 
     private:
-        map<size_t, SSARegisterHandle> versions;
+        map<BlockId, SSARegisterHandle> versions;
     };
 
     template<typename CTX>
@@ -188,8 +188,8 @@ namespace instructions {
     struct Branch: public NamedIrInstruction<"branch", CTX> {
     PUB_VIRTUAL_COPY(Branch)
         SSARegisterHandle condition;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(condition);
@@ -199,7 +199,7 @@ namespace instructions {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        Branch(SSARegisterHandle condition, size_t t, size_t f): NamedIrInstruction<"branch", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        Branch(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"branch", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -226,8 +226,8 @@ namespace instructions {
             ctx.jmpBlock(scopeT);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -239,8 +239,8 @@ namespace instructions {
         JumpCondType type;
         SSARegisterHandle lhs;
         SSARegisterHandle rhs;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(lhs);
@@ -290,8 +290,8 @@ namespace instructions {
             ctx.jmpBlock(scopeT);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {&scopeT, &scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -301,8 +301,8 @@ namespace instructions {
     struct JumpFalse: public NamedIrInstruction<"jump_false", CTX> {
         PUB_VIRTUAL_COPY(JumpFalse)
         SSARegisterHandle condition;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(condition);
@@ -312,7 +312,7 @@ namespace instructions {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        JumpFalse(SSARegisterHandle condition, size_t t, size_t f): NamedIrInstruction<"jump_false", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        JumpFalse(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"jump_false", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -342,8 +342,8 @@ namespace instructions {
             ctx.assignPhis(scopeT);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId> branchTargetsPtr() const override {
+            return {&scopeT, &scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -353,8 +353,8 @@ namespace instructions {
     struct JumpTrue: public NamedIrInstruction<"jump_true", CTX> {
         PUB_VIRTUAL_COPY(JumpTrue)
         SSARegisterHandle condition;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(condition);
@@ -392,19 +392,19 @@ namespace instructions {
             ctx.assignPhis(scopeF);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {&scopeT, &scopeF};
         }
 
         bool isTerminal() const override { return true; }
     };
 
     template<typename CTX>
-    struct Jump: public IRBaseInstruction<size_t, "jump", CTX> {
+    struct Jump: public IRBaseInstruction<BlockId, "jump", CTX> {
     PUB_VIRTUAL_COPY(Jump)
         bool shouldAssign = true;
 
-        Jump(size_t value): IRBaseInstruction<size_t, "jump", CTX>(SSARegisterHandle::invalid(), value) {}
+        Jump(BlockId value): IRBaseInstruction<BlockId, "jump", CTX>(SSARegisterHandle::invalid(), value) {}
 
         void generate(CTX::GEN& ctx) override {
             if (shouldAssign) ctx.assignPhis(this->value);
@@ -412,7 +412,7 @@ namespace instructions {
             ctx.jmpBlock(this->value);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {return {this->value};}
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override { return std::vector<BlockId*>{(BlockId*)&this->value}; }
 
         bool isTerminal() const override { return true; }
     };
@@ -424,8 +424,8 @@ namespace instructions {
         JumpCondType type;
         SSARegisterHandle lhs;
         SSARegisterHandle rhs;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(rhs);
@@ -436,7 +436,7 @@ namespace instructions {
             this->basePrint(stream, " {} {} {} ? @{} : @{}", lhs, toString1(type), rhs, scopeT, scopeF);
         }
 
-        JumpCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, size_t t, size_t f): NamedIrInstruction<"jump_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
+        JumpCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<"jump_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
 
         };
 
@@ -465,8 +465,8 @@ namespace instructions {
             ctx.assignPhis(scopeF);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {&scopeT, &scopeF};
         }
 
         bool isTerminal() const override { return true; }

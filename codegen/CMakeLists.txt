@@ -20,6 +20,7 @@ add_library(vi_codegen OBJECT
         allocators/Allocator.h
         allocators/BetterAllocator.h
         LiveRanges.h
+        BlockId.h
 )
 
 add_subdirectory(../gen64 build)

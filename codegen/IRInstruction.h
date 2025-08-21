@@ -6,6 +6,7 @@
 #include "../utils/StringLiteral.h"
 #include "../utils/VirtualCopy.h"
 #include "../utils/stringify.h"
+#include "BlockId.h"
 
 template<typename CTX>
 struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
@@ -33,8 +34,16 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
 
     virtual void generate(CTX::GEN& gen) = 0;
 
-    [[nodiscard]] virtual vector<size_t> branchTargets() const {
+    [[nodiscard]] virtual vector<BlockId*> branchTargetsPtr() const {
         return {};
+    }
+
+    [[nodiscard]] vector<BlockId> branchTargets() const {
+        vector<BlockId> targets;
+        for (auto tgt : branchTargetsPtr()) {
+            targets.push_back(*tgt);
+        }
+        return targets;
     }
 
     [[nodiscard]] virtual bool isTerminal() const {

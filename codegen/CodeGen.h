@@ -21,25 +21,25 @@ public:
     typedef size_t RegisterHandle;
 
     CTX::ASSEMBLER& assembler;
-    std::map<size_t, size_t> labelMapping;
+    std::map<BlockId, size_t> labelMapping;
 
-    void jmpBlock(size_t blockId) {
+    void jmpBlock(BlockId blockId) {
         assembler.jmp(getJmpLabelForBlock(blockId));
     }
 
-    void jmpBlockTrue(size_t reg, size_t blockId) {
+    void jmpBlockTrue(size_t reg, BlockId blockId) {
         assembler.jmpLabelTrue(reg, getJmpLabelForBlock(blockId));
     }
 
-    void jmpBlockFalse(size_t reg, size_t blockId) {
+    void jmpBlockFalse(size_t reg, BlockId blockId) {
         assembler.jmpLabelFalse(reg, getJmpLabelForBlock(blockId));
     }
 
-    void jmpBlockCond(JumpCondType type, size_t lhs, size_t rhs, size_t blockId) {
+    void jmpBlockCond(JumpCondType type, size_t lhs, size_t rhs, BlockId blockId) {
         assembler.jmpCond(getJmpLabelForBlock(blockId), type, lhs, rhs);
     }
 
-    size_t getJmpLabelForBlock(size_t block) {
+    size_t getJmpLabelForBlock(BlockId block) {
         if (labelMapping.contains(block)) return labelMapping.at(block);
 
         auto label = assembler.allocateJmpLabel();
@@ -50,23 +50,22 @@ public:
 
     void doPrintLinearized() {
         irGen.graph.printRegisters();
-        if (currentLiveRanges.regCount() != 0 && currentLiveRanges.length() != 0) {
-            auto max_value = currentLiveRanges.length()-1; // FIXME this aint right
-            auto max_value_len = to_string(max_value).size();
 
-            println("== BINARY LAYOUT == {}", name);
-            auto id = 0u;
-            for (auto blockId : flatBlocks) {
-                cout << string(max_value_len, ' ') << " # " << blockId << " (" << getBlock(blockId).tag << ")" << (getBlock(blockId).isLoopHeader() ? " loop-header" : "") << endl;
-                for (const auto& inst : irGen.getBlock(blockId).instructions) {
-                    auto ajd = to_string(id);
-                    cout << ajd << string(max_value_len-ajd.size(), ' ') << " | ";
-                    inst->print(irGen);
-                    id++;
-                }
+        auto max_value = currentLiveRanges.length()-1; // FIXME this aint right
+        auto max_value_len = to_string(max_value).size();
+
+        println("== BINARY LAYOUT == {}", name);
+        auto id = 0u;
+        for (auto blockId : flatBlocks) {
+            cout << string(max_value_len, ' ') << " # " << blockId.toString() << " (" << getBlock(blockId).tag << ")" << (getBlock(blockId).isLoopHeader() ? " loop-header" : "") << endl;
+            for (const auto& inst : irGen.getBlock(blockId).instructions) {
+                auto ajd = to_string(id);
+                cout << ajd << string(max_value_len-ajd.size(), ' ') << " | ";
+                inst->print(irGen);
+                id++;
             }
-            println("== END ==");
         }
+        println("== END ==");
     }
 
     void doDumpGraphPNG() {
@@ -101,6 +100,9 @@ public:
         }
 
         flatBlocks = irGen.graph.flattenBlocks();
+
+        if (printLinearized) doPrintLinearized();
+
         currentLiveRanges = LiveRanges{liveRanges(flatBlocks)};
 
         fixUnliveRanges();
@@ -168,7 +170,7 @@ public:
     }
 
 // http://www.christianwimmer.at/Publications/Wimmer10a/Wimmer10a.pdf
-    map<SSARegisterHandle, vector<bool>> liveRanges(vector<size_t> blocks) const {
+    map<SSARegisterHandle, vector<bool>> liveRanges(vector<BlockId> blocks) const {
         return irGen.graph.simpleLiveRanges(blocks);
     }
 
@@ -188,7 +190,7 @@ public:
         generateInstructions(instructions);
     }
 
-    void assignPhis(size_t targetBlock) {
+    void assignPhis(BlockId targetBlock) {
         const auto& block = irGen.getBlock(targetBlock);
         auto phiFunctions = block.getPhis(currentBlock);
 
@@ -228,7 +230,7 @@ public:
         return buf;
     }
 
-    auto getBlock(size_t id) -> BaseBlock& {
+    auto getBlock(BlockId id) -> BaseBlock& {
         return irGen.getBlock(id);
     }
 
@@ -251,7 +253,7 @@ public:
         return irGen.getRecord(handle).getType();
     }
 
-    size_t getBasicBlockOffset(size_t id, std::span<size_t> linearized) {
+    size_t getBasicBlockOffset(BlockId id, std::span<BlockId> linearized) {
         size_t acu = 0;
         for (auto bb : linearized) {
             if (bb == id) return acu;
@@ -270,14 +272,13 @@ public:
         });
     }
 
-    void fixupPhiLiveRanges(std::span<size_t> linearized) {
+    void fixupPhiLiveRanges(std::span<BlockId> linearized) {
         irGen.graph.forEachInstruction([&](auto& inst) {
             if (auto phi = inst.template cst<instructions::PhiFunction<CTX>>(); phi) {
                 for (auto [block, value] : phi->getRawVersions()) {
                     auto offset = getBasicBlockOffset(block, linearized);
                     auto size = getBlock(block).getInstructions().size();
                     if (not currentLiveRanges.contains(phi->target)) {
-                        println("JSEM UPPPPPPPPPPPPPLNEEEEEEEEEEE V PICIIIIIIIIIIIIIIIIII {}", phi->target);
                         return;
                     }
                     assert(currentLiveRanges.contains(phi->target));
@@ -341,9 +342,9 @@ public:
     CTX::IRGEN& irGen;
 
     LiveRanges currentLiveRanges;
-    size_t currentBlock = 0;
+    BlockId currentBlock;
     size_t currentInstructionCounter = 0;
-    std::vector<size_t> flatBlocks;
+    std::vector<BlockId> flatBlocks;
     string name;
     Allocator<CTX>* allocator;
 };

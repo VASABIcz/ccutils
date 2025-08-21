@@ -5,6 +5,7 @@
 #include "CodeBlock.h"
 #include "../utils/Errorable.h"
 #include "LiveRanges.h"
+#include "BlockId.h"
 
 template<typename CTX>
 struct ControlFlowGraph {
@@ -13,30 +14,34 @@ struct ControlFlowGraph {
 
     ControlFlowGraph() = default;
 
-    BaseBlock& getBlock(size_t blockId) {
-        assertInBounds(nodes, blockId);
-        return *nodes[blockId];
+    BaseBlock& getBlock(BlockId blockId) {
+        if (not nodes.contains(blockId)) PANIC();
+        return *nodes.at(blockId);
     }
 
-    [[nodiscard]] const BaseBlock& getBlockConst(size_t blockId) const {
-        assertInBounds(nodes, blockId);
-        return *nodes[blockId];
+    [[nodiscard]] const BaseBlock& getBlockConst(BlockId blockId) const {
+        if (not nodes.contains(blockId)) PANIC();
+        return *nodes.at(blockId);
+    }
+
+    void removeBlock(BlockId blockId) {
+        if (not nodes.contains(blockId)) PANIC();
+        nodes.erase(blockId);
     }
 
     auto validNodes() {
-        return views::filter(this->nodes, [](const auto& value) { return value != nullptr; });
+        return this->nodes | views::values;
     }
 
     [[nodiscard]] auto validNodesConst() const {
-        return views::filter(this->nodes, [](const auto& value) { return value != nullptr; });
+        return this->nodes | views::values;
     }
 
     [[nodiscard]] size_t nodeCount() const {
-        auto _nodes = validNodesConst();
-        return std::distance(_nodes.begin(), _nodes.end());
+        return nodes.size();
     }
 
-    void destroy(size_t blockId) {
+    void destroy(BlockId blockId) {
         println("destroying block: {}", blockId);
         (void)nodes[blockId].uPtrRef().reset(nullptr);
     }
@@ -164,10 +169,14 @@ struct ControlFlowGraph {
         return reg;
     }
 
-    BaseBlock& createBlock(string tag) {
-        nodes.emplace_back(make_unique<BaseBlock>(std::move(tag), nodes.size()));
+    size_t blockIdCounter = 0;
+    BlockId allocBlockId() {
+        return {blockIdCounter++};
+    }
 
-        return *nodes.back().get();
+    BaseBlock& createBlock(string tag) {
+        auto id = allocBlockId();
+        return *(nodes.emplace(id, make_unique<BaseBlock>(std::move(tag), id)).first->second);
     }
 
     void printRegisters() {
@@ -251,28 +260,6 @@ struct ControlFlowGraph {
         return buf;
     }
 
-    bool canReach(size_t source, size_t target) const {
-        unordered_set<size_t> visited;
-        vector<size_t> toVisit;
-
-        toVisit.push_back(source);
-
-        while (not toVisit.empty()) {
-            auto current = toVisit.back(); toVisit.pop_back();
-
-            if (visited.contains(current)) continue;
-            visited.insert(current);
-
-            if (current == target) return true;
-
-            for (auto curTarget : getBlockConst(current).getTargets()) {
-                toVisit.push_back(curTarget);
-            }
-        }
-
-        return false;
-    }
-
     ControlFlowGraph::DependencyMap buildDependencyMapDeep() const {
         DependencyMap buf;
 
@@ -316,46 +303,18 @@ struct ControlFlowGraph {
         return useCount;
     }
 
-    bool canReach(size_t source, size_t target, unordered_set<size_t>& ignore1) const {
-        unordered_set<size_t> visited{ignore1.begin(), ignore1.end()};
-        vector<size_t> toVisit;
-
-        toVisit.push_back(source);
-
-        while (not toVisit.empty()) {
-            auto current = toVisit.back(); toVisit.pop_back();
-
-            if (current == target) return true;
-
-            if (visited.contains(current)) continue;
-            visited.insert(current);
-
-            for (auto curTarget : getBlockConst(current).getTargets()) {
-                toVisit.push_back(curTarget);
-            }
-        }
-
-        return false;
-    }
-
-    vector<vector<size_t>> inverseTreeP(const ControlFlowGraph<CTX>& graph) const {
-        vector<vector<size_t>> res;
-        for (auto _i : views::iota(0u, graph.nodeCount())) {
-            (void)_i;
-            res.emplace_back();
-        }
-
-
-        for (const auto& node : graph.validNodesConst()) {
+    map<BlockId, set<BlockId>> inverseTreeP() const {
+        map<BlockId, set<BlockId>> res;
+        for (const auto& node : validNodesConst()) {
             for (auto tgt : node.get()->getTargets()) {
-                res[tgt].push_back(node.get()->blockId);
+                res[tgt].insert(node.get()->blockId);
             }
         }
 
         return res;
     }
 
-    optional<size_t> indexOfLast(const vector<size_t>& pepa, const auto& pred) const {
+    optional<size_t> indexOfLast(const vector<BlockId>& pepa, const auto& pred) const {
         // we could iterate in reverse :)
         optional<size_t> n;
         for (const auto& [i, item] : pepa | views::enumerate) {
@@ -370,24 +329,24 @@ struct ControlFlowGraph {
         }
     }
 
-    vector<size_t> flattenBlocks() const {
-        vector<size_t> toProcessStack;
-        vector<size_t> result;
-        set<size_t> resolved;
-        auto inverseTree = inverseTreeP(*this);
-        vector<size_t> priorityStack;
+    vector<BlockId> flattenBlocks() const {
+        vector<BlockId> toProcessStack;
+        vector<BlockId> result;
+        set<BlockId> resolved;
+        auto inverseTree = inverseTreeP();
+        vector<BlockId> priorityStack;
 
-        toProcessStack.push_back(0);
+        toProcessStack.push_back(BlockId{0});
 
-        const auto visit = [&](size_t n) {
+        const auto visit = [&](BlockId n) {
             if (resolved.contains(n)) return;
             toProcessStack.push_back(n);
         };
         auto graph = *this;
 
-        const auto canReach = [&](size_t src, size_t dst) -> bool {
-            stack<size_t> toVisit;
-            set<size_t> visited;
+        const auto canReach = [&](BlockId src, BlockId dst) -> bool {
+            stack<BlockId> toVisit;
+            set<BlockId> visited;
             toVisit.push(src);
 
             while (not toVisit.empty()) {
@@ -402,15 +361,15 @@ struct ControlFlowGraph {
             return false;
         };
 
-        auto unresolvedIncomingEdges = [&](size_t node) -> vector<size_t> { return inverseTree[node] | views::filter([&](const auto& it) { return !resolved.contains(it); }) | vi::toVec; };
-        auto isAllIncomingResolved = [&](size_t node) -> bool { return unresolvedIncomingEdges(node).empty(); };
+        auto unresolvedIncomingEdges = [&](BlockId node) -> vector<BlockId> { return inverseTree[node] | views::filter([&](const auto& it) { return !resolved.contains(it); }) | vi::toVec; };
+        auto isAllIncomingResolved = [&](BlockId node) -> bool { return unresolvedIncomingEdges(node).empty(); };
 
         const auto removePriorityIfResolve = [&]() {
             if (priorityStack.empty()) return;
             priorityStack.erase(std::remove_if(priorityStack.begin(), priorityStack.end(), [&](const auto& it) { return isAllIncomingResolved(it); }), priorityStack.end());
         };
 
-        const auto markResolved = [&](size_t n) {
+        const auto markResolved = [&](BlockId n) {
             result.push_back(n);
             resolved.insert(n);
             removePriorityIfResolve();
@@ -428,7 +387,7 @@ struct ControlFlowGraph {
                 res = indexOfLast(toProcessStack, [&](const auto& it) { return isAllIncomingResolved(it); });
             }
 
-            size_t top;
+            BlockId top;
             if (res.has_value()) {
                 top = toProcessStack[*res];
                 toProcessStack.erase(toProcessStack.begin()+*res);
@@ -455,48 +414,19 @@ struct ControlFlowGraph {
         return result;
     }
 
-    vector<size_t> lookupIngress(size_t id) const {
-        vector<size_t> buf;
+    vector<BlockId> lookupIngress(BlockId id) const {
+        vector<BlockId> buf;
 
         for (const auto& block : validNodesConst()) {
-            if (block->isEmpty()) continue;
-
-            auto& inst = block->getInstruction(-1);
-
-            if (inst->template is<instructions::Jump<CTX>>()) {
-                if (inst->template cst<instructions::Jump<CTX>>()->value == id) {
-                    buf.push_back(block->blockId);
-                }
-            }
-            else if (inst->template is<instructions::Branch<CTX>>()) {
-                auto branch = inst->template cst<instructions::Branch<CTX>>();
-                if (branch->scopeT == id || branch->scopeF == id) {
-                    buf.push_back(block->blockId);
-                }
-            }
-            else if (inst->template is<instructions::FallTrough<CTX>>()) {
-                if (inst->template cst<instructions::FallTrough<CTX>>()->value == id) {
-                    buf.push_back(block->blockId);
-                }
-            }
-            else if (inst->template is<instructions::JumpTrue<CTX>>()) {
-                auto branch = inst->template cst<instructions::JumpTrue<CTX>>();
-                if (branch->scopeT == id || branch->scopeF == id) {
-                    buf.push_back(block->blockId);
-                }
-            }
-            else if (inst->template is<instructions::JumpFalse<CTX>>()) {
-                auto branch = inst->template cst<instructions::JumpTrue<CTX>>();
-                if (branch->scopeT == id || branch->scopeF == id) {
-                    buf.push_back(block->blockId);
-                }
+            for (auto tgt : block->getTargets()) {
+                if (tgt == id) buf.push_back(block->id());
             }
         }
 
         return buf;
     }
 
-    map<SSARegisterHandle, vector<bool>> simpleLiveRanges(vector<size_t> blocks) {
+    map<SSARegisterHandle, vector<bool>> simpleLiveRanges(vector<BlockId> blocks) {
         map<SSARegisterHandle, vector<bool>> ranges;
         auto [instructionCount, instructionRangeOffset] = blockOffsets(blocks);
 
@@ -544,9 +474,9 @@ struct ControlFlowGraph {
         return l.currentLiveRanges;
     }
 
-    std::pair<size_t, std::map<size_t, size_t>> blockOffsets(const std::vector<size_t>& blocks) const {
+    std::pair<size_t, std::map<BlockId, size_t>> blockOffsets(const std::vector<BlockId>& blocks) const {
         size_t instructionCount = 0;
-        map<size_t, size_t> instructionRangeOffset;
+        map<BlockId, size_t> instructionRangeOffset;
 
         for (auto block : blocks) {
             instructionRangeOffset[block] = instructionCount;
@@ -558,25 +488,24 @@ struct ControlFlowGraph {
         return {instructionCount, instructionRangeOffset};
     }
 
-    size_t getLastBlockOfLoop(size_t blockId, std::span<size_t> blocks) const {
-        // get incoming blocks to header
-        // find the farthest block in liner representation
-        // TODO i think we know the information in previous pass so we can just pass it back?
-        auto ingress = lookupIngress(blockId) | views::filter([&](auto it) { return contains(blocks, it); }) | views::transform([&](auto it) { return make_pair(it, indexOf(blocks, it)); });
-        assert(not ingress.empty());
-        auto srcIndex = indexOf(blocks, blockId);
+    BlockId getLastBlockOfLoop(BlockId blockId, std::span<BlockId> blocks) const {
+        long headerIndex = indexOf(blocks, blockId);
 
-        auto max = pair{ingress.front().first, difference(ingress.front().second, srcIndex)};
-        for (auto [ingId, ingIndex] : ingress) {
-            auto diff = difference(srcIndex, ingIndex);
-            if (diff >= max.second) max = {ingId, diff}; // it can happend that this returns the inbound block that isnt actualy part of the loop
+        auto ingressDist = collectVec(lookupIngress(blockId) | views::transform([&](auto it) { return make_pair(it, (long)indexOf(blocks, it)-headerIndex); }));
+        assert(not ingressDist.empty());
+
+        auto max = pair{ingressDist.front().first, ingressDist.front().second};
+        for (auto [ingId, ingOffset] : ingressDist) {
+            if (ingOffset >= max.second) max = {ingId, ingOffset}; // it can happend that this returns the inbound block that isnt actualy part of the loop
         }
+
+        assert(max.second >= 0);
 
         return max.first;
     };
 
 
-    map<SSARegisterHandle, vector<bool>> liveRanges(vector<size_t> blocks) const {
+    map<SSARegisterHandle, vector<bool>> liveRanges(vector<BlockId> blocks) const {
         map<SSARegisterHandle, vector<bool>> ranges;
         map<SSARegisterHandle, size_t> registerStarts;
 
@@ -616,7 +545,7 @@ struct ControlFlowGraph {
             return getBlockConst(blockId).getPhiSpan();
         };
 
-        auto getBlockRanges = [&](size_t blockId) -> pair<size_t, size_t> {
+        auto getBlockRanges = [&](BlockId blockId) -> pair<size_t, size_t> {
             auto start = instructionRangeOffset[blockId];
             auto instructionCount = getBlockConst(blockId).instructionCount();
             // assert(instructionCount > 0);
@@ -876,7 +805,7 @@ struct ControlFlowGraph {
         }
     }
 
-    void genPhiRec(size_t reg, const std::set<SSARegisterHandle>& badBoys, std::map<SSARegisterHandle, SSARegisterHandle> reachable, std::set<size_t>& visited) {
+    void genPhiRec(BlockId reg, const std::set<SSARegisterHandle>& badBoys, std::map<SSARegisterHandle, SSARegisterHandle> reachable, std::set<BlockId>& visited) {
         if (visited.contains(reg)) return;
         visited.insert(reg);
 
@@ -927,7 +856,7 @@ struct ControlFlowGraph {
         forEachBlock([&](BaseBlock& block) {
             if (preds[block.id()].size() > 1) {
                 for (auto bad : badBoys) {
-                    std::map<size_t, SSARegisterHandle> imps;
+                    std::map<BlockId, SSARegisterHandle> imps;
 
                     for (auto pred : preds[block.id()]) {
                         imps[pred] = bad;
@@ -938,14 +867,14 @@ struct ControlFlowGraph {
             }
         });
 
-        std::set<size_t> visited;
+        std::set<BlockId> visited;
 
         std::map<SSARegisterHandle, SSARegisterHandle> reachable;
         genPhiRec(root().id(), badBoys, reachable, visited);
     }
 
     BaseBlock& root() {
-        return *this->nodes[0];
+        return *this->nodes.at(BlockId{0});
     }
 
     static std::map<size_t, std::set<size_t>> calcDom(std::set<size_t> nodes, std::function<std::vector<size_t>(size_t)> getPredecessors) {
@@ -979,8 +908,8 @@ struct ControlFlowGraph {
         return res;
     }
 
-    std::map<size_t, std::set<size_t>> predecesors() {
-        std::map<size_t, std::set<size_t>> preds;
+    std::map<BlockId, std::set<BlockId>> predecesors() {
+        std::map<BlockId, std::set<BlockId>> preds;
         forEachBlock([&](BaseBlock& block) {
             for (auto tgt : block.getTargets()) {
                 preds[tgt].insert(block.id());
@@ -1017,6 +946,6 @@ struct ControlFlowGraph {
     }
 
 private:
-    vector<CopyPtr<BaseBlock>> nodes;
+    std::map<BlockId, CopyPtr<BaseBlock>> nodes;
     vector<CopyPtr<typename CTX::REG>> registers{};
 };

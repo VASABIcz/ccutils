@@ -10,6 +10,7 @@
 #include "IRInstruction.h"
 #include "../utils/utils.h"
 #include "../utils/CopyPtr.h"
+#include "BlockId.h"
 
 using namespace std;
 
@@ -54,7 +55,7 @@ public:
         }
     }
 
-    size_t id() const {
+    BlockId id() const {
         return blockId;
     }
 
@@ -68,7 +69,7 @@ public:
     }
 
     string tag;
-    size_t blockId;
+    BlockId blockId;
     vector<CopyPtr<IRInstruction<CTX>>> instructions{};
 
     std::string toString(CTX::IRGEN& gen) {
@@ -116,10 +117,36 @@ public:
         return pis;
     }
 
-    vector<size_t> getTargets() const {
+    vector<BlockId> getTargets() const {
         if (instructions.empty()) return {};
 
         return getInstructionConst(-1)->branchTargets();
+    }
+
+    vector<BlockId*> getTargetsPtr() const {
+        if (instructions.empty()) return {};
+
+        return getInstructionConst(-1)->branchTargetsPtr();
+    }
+
+    void patchJumps(BlockId old, BlockId neww) {
+        for (auto tgt : getTargetsPtr()) {
+            if (*tgt == old) {
+                *tgt = neww;
+            }
+        }
+    }
+
+    void patchPhis(BlockId oldBlock, std::set<BlockId> newbies) {
+        for (instructions::PhiFunction<CTX>* phi : getPhiSpan()) {
+            auto vv = phi->getBySource(oldBlock);
+            if (vv.has_value()) {
+                for (auto newb : newbies) {
+                    phi->pushVersion(*vv, newb);
+                }
+                phi->remove(oldBlock);
+            }
+        }
     }
 
     vector<instructions::PhiFunction<CTX>*> getPhiSpan() const {
@@ -142,7 +169,7 @@ public:
         return phis;
     }
 
-    map<SSARegisterHandle, SSARegisterHandle> getPhis(size_t source) const {
+    map<SSARegisterHandle, SSARegisterHandle> getPhis(BlockId source) const {
         map<SSARegisterHandle, SSARegisterHandle> pis;
 
         for (auto phi : getPhiSpan()) {
@@ -183,11 +210,9 @@ public:
         return instructions.empty();
     }
 
-    CodeBlock(string tag, size_t blockId) : tag(std::move(tag)), blockId(blockId) {
+    CodeBlock(string tag, BlockId blockId) : tag(std::move(tag)), blockId(blockId) {
 
     }
-
-    SSARegisterHandle getTarget(size_t id) const { return SSARegisterHandle{blockId, id, true}; }
 
     size_t instructionCount() const {
         return instructions.size();
