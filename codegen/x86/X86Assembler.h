@@ -377,6 +377,7 @@ public:
                 auto hand = self->dumpToStack(reg);
                 assert(not toRestore.contains(reg));
                 toRestore.insert({reg, hand});
+                toFree.emplace(hand);
             } else {
                 assert(not toFree.contains(self->allocator.toHandleStupid(reg)));
                 toFree.emplace(self->allocator.toHandleStupid(reg));
@@ -451,11 +452,9 @@ public:
             didRestore = true;
             for (auto [reg, stack] : toWriteback) {
                 self->movReg(stack, reg);
-                self->freeRegister(reg);
             }
             for (auto [reg, hand] : toRestore) {
                 self->movHandleToReg(reg, hand);
-                self->freeRegister(hand);
             }
             for (auto f : toFree) {
                 self->freeRegister(f);
@@ -520,6 +519,22 @@ public:
     }
 
     Arg handleToArg(size_t handle);
+
+    std::vector<Arg> handleToArg(std::span<size_t> handle) {
+        std::vector<Arg> out;
+
+        for (auto hand : handle) {
+            out.push_back(handleToArg(hand));
+        }
+
+        return out;
+    }
+
+    std::optional<Arg> handleToArg(std::optional<size_t> handle) {
+        if (not handle.has_value()) return {};
+
+        return handleToArg(*handle);
+    }
 
     Arg handleToArgAssume8(size_t handle);
 

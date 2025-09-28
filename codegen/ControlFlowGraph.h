@@ -171,7 +171,7 @@ struct ControlFlowGraph {
 
     size_t blockIdCounter = 0;
     BlockId allocBlockId() {
-        return {blockIdCounter++};
+        return BlockId::raw(blockIdCounter++);
     }
 
     BaseBlock& createBlock(string tag) {
@@ -324,7 +324,7 @@ struct ControlFlowGraph {
     }
 
     void removeInstruction(SSARegisterHandle tgt) {
-        for (auto& block : this->nodes) {
+        for (auto& [id, block] : this->nodes) {
             block->removeInstruction(tgt);
         }
     }
@@ -336,7 +336,7 @@ struct ControlFlowGraph {
         auto inverseTree = inverseTreeP();
         vector<BlockId> priorityStack;
 
-        toProcessStack.push_back(BlockId{0});
+        toProcessStack.push_back(BlockId::raw(0));
 
         const auto visit = [&](BlockId n) {
             if (resolved.contains(n)) return;
@@ -387,7 +387,7 @@ struct ControlFlowGraph {
                 res = indexOfLast(toProcessStack, [&](const auto& it) { return isAllIncomingResolved(it); });
             }
 
-            BlockId top;
+            BlockId top = BlockId::invalid();
             if (res.has_value()) {
                 top = toProcessStack[*res];
                 toProcessStack.erase(toProcessStack.begin()+*res);
@@ -426,7 +426,7 @@ struct ControlFlowGraph {
         return buf;
     }
 
-    map<SSARegisterHandle, vector<bool>> simpleLiveRanges(vector<BlockId> blocks) {
+    LiveRanges simpleLiveRanges(vector<BlockId> blocks) {
         map<SSARegisterHandle, vector<bool>> ranges;
         auto [instructionCount, instructionRangeOffset] = blockOffsets(blocks);
 
@@ -461,9 +461,10 @@ struct ControlFlowGraph {
         for (auto b : blocks) {
             if (getBlock(b).isLoopHeader()) {
                 auto bb = getLastBlockOfLoop(b, blocks);
+                if (not bb.has_value()) continue;
 
                 auto start = instructionRangeOffset[b];
-                auto end = (instructionRangeOffset[bb]+ getBlock(bb).instructions.size())-1;
+                auto end = (instructionRangeOffset[*bb]+ getBlock(*bb).instructions.size())-1;
 
                 for (auto ins : l.intersections({start, end})) {
                     l.appendRange(ins, start, end, true);
@@ -471,7 +472,7 @@ struct ControlFlowGraph {
             }
         }
 
-        return l.currentLiveRanges;
+        return l;
     }
 
     std::pair<size_t, std::map<BlockId, size_t>> blockOffsets(const std::vector<BlockId>& blocks) const {
@@ -488,7 +489,7 @@ struct ControlFlowGraph {
         return {instructionCount, instructionRangeOffset};
     }
 
-    BlockId getLastBlockOfLoop(BlockId blockId, std::span<BlockId> blocks) const {
+    std::optional<BlockId> getLastBlockOfLoop(BlockId blockId, std::span<BlockId> blocks) const {
         long headerIndex = indexOf(blocks, blockId);
 
         auto ingressDist = collectVec(lookupIngress(blockId) | views::transform([&](auto it) { return make_pair(it, (long)indexOf(blocks, it)-headerIndex); }));
@@ -499,7 +500,7 @@ struct ControlFlowGraph {
             if (ingOffset >= max.second) max = {ingId, ingOffset}; // it can happend that this returns the inbound block that isnt actualy part of the loop
         }
 
-        assert(max.second >= 0);
+        if (max.second < 0) return {};
 
         return max.first;
     };
@@ -764,6 +765,20 @@ struct ControlFlowGraph {
         return hand;
     }
 
+    SSARegisterHandle pushRegister(CopyPtr<typename CTX::REG> reg) {
+        reg->id = registers.size();
+
+        auto hand = reg->getHandle();
+
+        registers.push_back(std::move(reg));
+
+        return hand;
+    }
+
+    SSARegisterHandle allocateDummy() {
+        return pushRegister(std::make_unique<typename CTX::REG>(*registers[0]));
+    }
+
     span<CopyPtr<typename CTX::REG>> getRegisters() {
         return registers;
     }
@@ -805,6 +820,29 @@ struct ControlFlowGraph {
         }
     }
 
+    void checkConsistency() {
+        std::map<SSARegisterHandle, bool> isAssigned; // isAssigned
+
+
+        forEachInstruction([&](IRInstruction<CTX>& inst, CodeBlock<CTX>& body) {
+            isAssigned[inst.target] = true;
+
+            for (auto tgt : body.getTargets()) {
+                if (not nodes.contains(tgt)) PANIC("invalid block {}", tgt);
+            }
+
+            for (auto src : inst.getSources()) {
+                if (isAssigned[src]) continue;
+            }
+
+            isAssigned[inst.target] = true;
+        });
+
+        for (auto [reg, isA] : isAssigned) {
+            if (not isA) PANIC("reg {} is not assigned", reg);
+        }
+    }
+
     void genPhiRec(BlockId reg, const std::set<SSARegisterHandle>& badBoys, std::map<SSARegisterHandle, SSARegisterHandle> reachable, std::set<BlockId>& visited) {
         if (visited.contains(reg)) return;
         visited.insert(reg);
@@ -830,17 +868,13 @@ struct ControlFlowGraph {
             for (instructions::PhiFunction<CTX>* phi : getBlock(tgt).getPhiSpan()) {
                 auto ver = UNWRAP(phi->getBySource(reg));
                 if (reachable.contains(ver)) {
-                    println("setting phi {} -> {} for {} / {}", reg, tgt, ver, reachable[ver]);
                     phi->pushVersion(reachable[ver], reg);
                 } else {
-                    println("setting phi {} -> {} for {}", reg, tgt, ver);
                     assert(badBoys.contains(ver));
                     phi->remove(reg);
                 }
             }
         }
-
-        println("WAT DE FAK {} {}", reg, reachable);
 
         for (auto tgt : getBlock(reg).getTargets()) {
             auto s = reachable;
@@ -874,7 +908,7 @@ struct ControlFlowGraph {
     }
 
     BaseBlock& root() {
-        return *this->nodes.at(BlockId{0});
+        return *this->nodes.at(BlockId::raw(0));
     }
 
     static std::map<size_t, std::set<size_t>> calcDom(std::set<size_t> nodes, std::function<std::vector<size_t>(size_t)> getPredecessors) {

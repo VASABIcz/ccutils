@@ -10,8 +10,11 @@
 #include "Assembler.h"
 #include "optimizations.h"
 #include "allocators/SimpleAllocator.h"
+#include "x86/RegAlloc.h"
 
 using namespace std;
+
+struct X86Call;
 
 template<typename CTX>
 class CodeGen {
@@ -105,6 +108,20 @@ public:
 
         currentLiveRanges = LiveRanges{liveRanges(flatBlocks)};
 
+        ControlFlowGraph<CTX>& g = irGen.graph;
+
+        auto [tt, lookup] = g.blockOffsets(flatBlocks);
+
+        g.forEachInstruction([&](auto& inst, auto& block, auto id) {
+            if (inst.template is<X86Call>()) {
+                for (auto reg : x86::SYSV_CALLER) {
+                    auto intId = currentLiveRanges.addRange(SSARegisterHandle::invalid());
+                    currentLiveRanges.collorReg(intId, RegAlloc::regToHandle(reg));
+                    currentLiveRanges.appendRange(intId, lookup[block.id()]+id, true);
+                }
+            }
+        });
+
         fixUnliveRanges();
         fixupPhiLiveRanges(flatBlocks);
         currentLiveRanges.clumpLiveRanges();
@@ -122,7 +139,7 @@ public:
         } while (didOptimize);
         optimizeCumulativeOps<CTX>(irGen, flatBlocks, currentLiveRanges);*/
 
-        forceStackAlloc<CTX>(irGen);
+        optimizations::forceStackAlloc<CTX>(irGen);
 
         if (printLiveRanges) currentLiveRanges.doPrintLiveRanges();
 
@@ -163,6 +180,16 @@ public:
         return getReg(*reg);
     }
 
+    std::vector<CodeGen::RegisterHandle> getReg(std::span<SSARegisterHandle> regs) {
+        std::vector<CodeGen::RegisterHandle> out;
+
+        for (auto reg : regs) {
+            out.push_back(getReg(reg));
+        }
+
+        return out;
+    }
+
     optional<CodeGen::RegisterHandle> getRegOrNull(const SSARegisterHandle& reg) {
         if (not reg.isValid()) return {};
 
@@ -170,7 +197,7 @@ public:
     }
 
 // http://www.christianwimmer.at/Publications/Wimmer10a/Wimmer10a.pdf
-    map<SSARegisterHandle, vector<bool>> liveRanges(vector<BlockId> blocks) const {
+    LiveRanges liveRanges(vector<BlockId> blocks) const {
         return irGen.graph.simpleLiveRanges(blocks);
     }
 
@@ -312,16 +339,15 @@ public:
         auto newRegs = this->assembler.numRegs();
 
         if (newRegs != oldRegs && warnLeak) {
-            println("[gen] instruction {} leaks registers old: {} vs new: {}", instruction->name, oldRegs, newRegs);
+            println("[gen] instruction {} leaks registers old: {} vs new: {}", instruction->toString(irGen), oldRegs, newRegs);
+            PANIC();
         }
     }
 
     void generateInstruction(IRInstruction* instruction) {
-        // std::cout << "INDEX " << currentInstructionCounter << std::endl;
         beforeInstruction(instruction);
 
         assignRegisters(*instruction);
-        // std::cout << "INDEX AFTER" << currentInstructionCounter << std::endl;
 
         assertStableRegs(instruction, [&] {
             this->assembler.beforeInstruction();
@@ -342,7 +368,7 @@ public:
     CTX::IRGEN& irGen;
 
     LiveRanges currentLiveRanges;
-    BlockId currentBlock;
+    BlockId currentBlock = BlockId::invalid();
     size_t currentInstructionCounter = 0;
     std::vector<BlockId> flatBlocks;
     string name;

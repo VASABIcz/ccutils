@@ -6,6 +6,7 @@
 #include <sstream>
 #include <filesystem>
 #include "utils/stringify.h"
+#include "utils/utils.h"
 
 struct Label {
     size_t offset;
@@ -24,7 +25,7 @@ std::vector<Label> parseFile(std::istream &idk) {
         idk >> idex;
         std::getline(idk, text);
         std::getline(idk, text);
-        res.emplace_back(idex, text);
+        res.emplace_back(idex, UNWRAP(unescape(text)));
     }
 
     return res;

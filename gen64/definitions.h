@@ -186,6 +186,10 @@ public:
         return value;
     }
 
+    uint8_t getRawValue() const {
+        return (uint8_t)value;
+    }
+
     [[nodiscard]] constexpr bool isExt() const {
         using enum X64RegisterType;
         return value >= R8;
@@ -194,6 +198,10 @@ public:
 private:
     X64RegisterType value;
 };
+
+inline X64Register fromRawWithExt(uint8_t encoded, bool isExt) {
+    return isExt ? (X64RegisterType)(((int)X64RegisterType::R8)+encoded) : (X64RegisterType)encoded;
+}
 
 #define REEG(nam) constexpr static X64Register nam = X64RegisterType::nam;
 REEG(Zero)
@@ -249,6 +257,8 @@ inline X64Register::SaveType fastCallSave(const X64Register& reg) {
     }
     unreachable();
 }
+
+constexpr std::array<X64Register, 9> SYSV_CALLER{Rdi, Rsi, Rdx, Rcx, Rax, R8, R9, R10, R11};
 
 inline X64Register::SaveType sysVSave(const X64Register& reg) {
     using enum X64RegisterType;

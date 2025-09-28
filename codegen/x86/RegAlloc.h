@@ -13,6 +13,8 @@ class  RegAlloc {
     friend struct BetterAllocator;
     template<typename CTX>
     friend struct NewAllocator;
+    template<typename CTX>
+    friend struct OtherAllocator;
     constexpr static array<x86::X64Register, 14> regs64{
         x86::R10,
         x86::R11,
@@ -162,8 +164,8 @@ public:
 
     [[nodiscard]] set<x86::X64Register> clobberedRegs() const;
 
-    size_t regToHandle(const x86::X64Register& reg) {
-        for (auto i = 0UL; i < this->regs64.size(); i++) {
+    static size_t regToHandle(const x86::X64Register& reg) {
+        for (auto i = 0UL; i < regs64.size(); i++) {
             if (regs64[i] == reg) {
                 return i;
             }
@@ -175,13 +177,6 @@ public:
     size_t toHandleStupid(const x86::X64Register& reg) {
         assert(isAcquired(reg));
 
-        return regToIdex(reg);
-    }
-
-    size_t regToIdex(const x86::X64Register& reg) const {
-        for (auto i = 0UL; i < regs64.size(); i++) {
-            if (regs64[i] == reg) return i;
-        }
-        PANIC()
+        return regToHandle(reg);
     }
 };

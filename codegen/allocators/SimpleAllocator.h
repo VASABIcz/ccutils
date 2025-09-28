@@ -76,6 +76,7 @@ struct SimpleAlloc: Allocator<CTX> {
     }
 
     RegisterHandle internalAllocateRegister(SSARegisterHandle tgt, const RegisterHandle registerHandle, bool check = true) {
+        // println("[REG-ALLOC] allocating {} - {}", tgt, assembler->toString(registerHandle));
         if (alreadyAllocated.contains(tgt) && check) {
             println("trying to double allocate: {} at {}", tgt.toString(), currentInstructionCounter);
             assert(false);
@@ -94,7 +95,7 @@ struct SimpleAlloc: Allocator<CTX> {
     void freeRegister(SSARegisterHandle reg) {
         if (!regs.contains(reg)) std::terminate();
         auto r = regs.at(reg);
-        // println("[GEN] freeing {} -> {}", reg, assembler->toString(r));
+        // println("[REG-ALLOC] freeing {} -> {}", reg, assembler->toString(r));
         regs.erase(reg);
         assembler->freeRegister(r);
     }

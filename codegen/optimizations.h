@@ -45,6 +45,31 @@ namespace optimizations {
         });
     }
 
+    // replace all ocuracnes of virgins with chad
+    template<typename CTX>
+    void removeReg(typename CTX::IRGEN& gen, SSARegisterHandle chad) {
+        forEachInstruction(gen.graph, [&](auto& inst, auto& node) -> bool {
+            if (inst->template is<instructions::PhiFunction>()) {
+                instructions::PhiFunction<CTX>* phi = inst->template cst<instructions::PhiFunction>();
+
+                phi->remove(chad);
+
+                return true;
+            }
+
+            // patch writes
+            if (inst->target == chad) {
+                PANIC()
+            }
+            // patch reads
+            inst->visitSrcs([&](auto& src) {
+                if (src == chad) PANIC()
+            });
+
+            return true;
+        });
+    }
+
 /// get rid of phi functions that have only one source
     template<typename CTX>
     bool optimizePhis(typename CTX::IRGEN& gen) {
@@ -151,22 +176,39 @@ namespace optimizations {
 
             auto vers = phi->getVersions();
 
+            gen.graph.checkConsistency();
+
+            // phi has only 1 unique input ... and it's the output :D
+            if (vers.size() == 1 && vers.contains(phi->target)) {
+                toRemove.emplace_back(node.get(), inst.get());
+                removeReg<CTX>(gen, *vers.begin());
+                didOptimize = true;
+                gen.graph.checkConsistency();
+                return true;
+            }
+
             // phi has only 1 unique input
             if (vers.size() == 1) {
+                // println("PHI DEMOVING {} - {}", phi->target, *vers.begin());
                 toRemove.emplace_back(node.get(), inst.get());
                 replaceInstr<CTX>(gen, *vers.begin(), set{phi->target});
                 didOptimize = true;
+                gen.graph.checkConsistency();
                 return true;
             }
 
             // phi has 1 unique input + other input is target
             if (vers.size() == 2 && vers.contains(phi->target)) {
+                // println("PHI REMOVING {}", phi->target);
                 toRemove.emplace_back(node.get(), inst.get());
                 vers.erase(phi->target);
                 replaceInstr<CTX>(gen, *vers.begin(), set{phi->target});
                 didOptimize = true;
+                gen.graph.checkConsistency();
                 return true;
             }
+
+            gen.graph.checkConsistency();
 
             return true;
         });
@@ -184,25 +226,29 @@ namespace optimizations {
         auto inv = gen.graph.inverseTreeP();
         std::vector<BlockId> toRemove;
 
-        for (auto [target, sources] : inv) {
-            CodeBlock<CTX>* xd = &gen.getBlock(target);
+        for (auto [self, sources] : inv) {
+            CodeBlock<CTX>*selfB = &gen.getBlock(self);
 
             // only 1 inst, only 1 jmp tgt
-            if (xd->getTargets().size() == 1 && xd->instructionCount() == 1) {
-                auto targetId = xd->getTargets()[0];
+            if (selfB->getTargets().size() == 1 && selfB->instructionCount() == 1) {
+                auto selfTarget = selfB->getTargets()[0];
 
-                // patch sources to jump to our target
+                // patch sources to jump to our self
                 for (auto src : sources) {
-                    CodeBlock<CTX>* b = &gen.getBlock(src);
-                    b->patchJumps(target, targetId);
+                    CodeBlock<CTX>*srcB = &gen.getBlock(src);
+                    srcB->patchJumps(self, selfTarget);
+                    // update inverse tree
+                    inv[selfTarget].insert(src);
                 }
 
-                CodeBlock<CTX>* tgtB = &gen.getBlock(targetId);
+                inv[selfTarget].erase(self);
 
-                // patch target blocks phis to account for new sources
-                tgtB->patchPhis(target, sources);
+                CodeBlock<CTX>* tgtB = &gen.getBlock(selfTarget);
 
-                toRemove.push_back(target);
+                // patch self blocks phis to account for new sources
+                tgtB->patchPhis(self, sources);
+
+                toRemove.push_back(self);
             }
         }
 

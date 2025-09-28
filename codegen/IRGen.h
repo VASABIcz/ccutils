@@ -45,7 +45,7 @@ public:
 
     [[nodiscard]] const CTX::REG& getRootConst(SSARegisterHandle target) const { return graph.getRootConst(target); }
 
-    auto& root() { return graph.getBlock(BlockId{0}); }
+    auto& root() { return graph.getBlock(BlockId::raw(0)); }
 
     auto nodes() { return graph.validNodes(); }
 
