@@ -391,7 +391,7 @@ void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
 }
 
 void X86Assembler::nop() {
-    mc.nop();
+    // mc.nop();
 }
 
 void X86Assembler::garbageMemCpy(x86::X64Register ptrReg, size_t stackOffset, size_t stackSize) {
@@ -1153,7 +1153,7 @@ void X86Assembler::invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret
         }
     }
 
-    withSavedCallRegs(exclude, excludeRestore, x86::sysVSave, [&](const auto& saved){
+    withSavedCallRegs(exclude, excludeRestore, x86::sysVSave, [&](const auto& saved) {
         mc.invokeScuffedSYSV2(func, args, ret, saved, [&](auto dst, auto sym, auto imm) {
             generateArgMove(dst, sym, imm);
         });

@@ -68,6 +68,7 @@ public:
         return true;
     }
 
+    bool mIsLoopHeader = false;
     string tag;
     BlockId blockId;
     vector<CopyPtr<IRInstruction<CTX>>> instructions{};
@@ -238,28 +239,22 @@ public:
         return buf;
     }
 
-/*    SSARegisterHandle pushRegister(string name, GenericType dataType, optional<SSARegisterHandle> previous, SSARegister::Type type) {
-        auto record = make_unique<SSARegister>(blockId, std::move(name), dataType, type);
-
-        const auto id = registers.size();
-        record->id = id;
-        if (previous.has_value()) record->setPrevious(*previous);
-
-        assert(record->getBlockId() == blockId);
-
-        registers.emplace_back(std::move(record));
-
-        return SSARegisterHandle::valid(blockId, id);
-    }*/
-
-    bool mIsLoopHeader = false;
-
     void push(unique_ptr<IRInstruction<CTX>> instruction) {
         instructions.emplace_back(std::move(instruction));
     }
 
-    size_t getId(IRInstruction<CTX>* instruction) const {
-        TODO();
+    size_t indexOf(IRInstruction<CTX>* instruction) const {
+        for (const auto& [i, inst] : instructions | views::enumerate) {
+            if (inst.get() == instruction) return i;
+        }
+        PANIC()
+    }
+
+    size_t indexOf(SSARegisterHandle handle) const {
+        for (const auto& [i, inst] : instructions | views::enumerate) {
+            if (inst->target == handle) return i;
+        }
+        PANIC()
     }
 
     void insert(unique_ptr<IRInstruction<CTX>> instruction, size_t id) {
@@ -268,7 +263,7 @@ public:
 
     template<typename T, typename ...Args>
     void insertInst(size_t id, Args&&... args) {
-        instructions.insert(instructions.begin()+id, CopyPtr<T>{createInstruction<T>(std::forward<Args>(args)...)});
+        instructions.emplace(instructions.begin()+id, createInstruction<T>(std::forward<Args>(args)...));
     }
 
     template<template<typename> typename T, typename ...Args>

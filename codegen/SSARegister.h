@@ -25,7 +25,7 @@ public:
 
     }
 
-    SSARegister(string name, Type type, std::optional<SSARegisterHandle> prev = std::nullopt) : name(std::move(name)), previous(prev), type(type) {
+    SSARegister(string name, Type type, std::optional<SSARegisterHandle> prev) : name(std::move(name)), previous(prev), type(type) {
 
     }
 

@@ -251,7 +251,7 @@ namespace instructions {
             this->basePrint(stream, "{} {} {} ? @{} : @{}", lhs.toString(), toString1(type), rhs.toString(), scopeT, scopeF);
         }
 
-        BranchCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, size_t t, size_t f): NamedIrInstruction<"branch_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
+        BranchCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<"branch_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
 
         };
 
@@ -291,7 +291,7 @@ namespace instructions {
         }
 
         [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
-            return {&scopeT, &scopeF};
+            return vector<BlockId*>{(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -364,7 +364,7 @@ namespace instructions {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        JumpTrue(SSARegisterHandle condition, size_t t, size_t f): NamedIrInstruction<"jump_true", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        JumpTrue(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"jump_true", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -393,7 +393,7 @@ namespace instructions {
         }
 
         [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
-            return {&scopeT, &scopeF};
+            return {(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -466,7 +466,7 @@ namespace instructions {
         }
 
         [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
-            return {&scopeT, &scopeF};
+            return {(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }

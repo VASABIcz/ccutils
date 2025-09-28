@@ -67,7 +67,7 @@ struct IRGenCtx {
 
     IRGenCtx(const IRGenCtx& other): gen(other.gen), currentBlock(other.currentBlock), nextBlock(other.nextBlock), loopBegin(other.loopBegin), loopEnd(other.loopEnd), hookAssign(other.hookAssign), hookRead(other.hookRead), stateReg(other.stateReg) {}
 
-    IRGenCtx(CTX::IRGEN& gen, CodeBlock<CTX>* currentBlock, BaseBlock* nextBlock, optional<size_t> begin, optional<size_t> end) : gen(gen), currentBlock(currentBlock),
+    IRGenCtx(CTX::IRGEN& gen, CodeBlock<CTX>* currentBlock, BaseBlock* nextBlock, optional<BlockId> begin, optional<BlockId> end) : gen(gen), currentBlock(currentBlock),
                                                                                                                                   nextBlock(nextBlock), loopBegin(begin), loopEnd(end) {}
 
     [[nodiscard]] SELF withNext(BaseBlock* next) const {

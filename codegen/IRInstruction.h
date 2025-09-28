@@ -90,9 +90,9 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         stream << stringify("{} := {} {}", target, name, stringify(strArg, std::forward<Args>(argz)...));
     }
 
-    std::string toString(CTX::IRGEN& gen) const {
+    std::string toString(CTX::IRGEN& gen) {
         std::stringstream stream;
-        print(gen, stream);
+        this->print(gen, stream);
 
         return stream.str();
     }

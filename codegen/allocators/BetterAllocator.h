@@ -98,9 +98,11 @@ struct BetterAllocator : Allocator<CTX> {
             sorted.push_back(pair.first);
         }
 
+        std::map<size_t, std::pair<size_t, size_t>> splitMap;
+
         const auto calcPrio = [&](SSARegisterHandle reg) {
             auto length = a.contains(reg) ? a[reg] : 1;
-            auto useCount = b.contains(reg) ? b[reg] : 1;
+            auto useCount = b.contains(reg) ? b[reg] : 100;
             auto v = (double)useCount/(double)(length*length);
             return v;
         };
@@ -140,19 +142,25 @@ struct BetterAllocator : Allocator<CTX> {
 
         for (auto reg : sorted) {
             if (allocated.contains(reg)) continue;
-            assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0,0)][0]);
+            if (not currentLiveRanges.getColored(reg).empty()) continue;
+            // assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0)][0]);
             auto intersections = currentLiveRanges.intersections(currentLiveRanges.firstLiveRange(reg));
 
-            assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0,0)][0]);
+            // assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0)][0]);
 
             regAlloc.clear();
             regAlloc.stack.clear();
 
             for (auto inter : intersections) {
+                for (auto colored : currentLiveRanges.getColored(inter)) {
+                    regAlloc.setReg(colored, true);
+                }
+
                 if (not allocated.contains(inter)) continue;
+
                 auto [item, itemSize] = allocated[inter];
 
-                assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0,0)][0]);
+                // assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0)][0]);
 
                 if (regAlloc.isStack(item)) {
                     regAlloc.stack.allocateStackRange(regAlloc.stack.getStackOffset(item), itemSize);
@@ -162,16 +170,18 @@ struct BetterAllocator : Allocator<CTX> {
                 }
             }
 
-            allocated[reg] = {regAlloc.allocateAny(sizeBytes(reg)), sizeBytes(reg)};
-            assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0,0)][0]);
+            auto rr = regAlloc.allocateAny(sizeBytes(reg));
+            println("ALLOCATED {} - {}", reg, regAlloc.debugString(rr));
+            allocated[reg] = {rr, sizeBytes(reg)};
+            // assert(currentLiveRanges.currentLiveRanges[SSARegisterHandle::valid(0)][0]);
         }
 
         regs = allocated;
 
-        if (false) {
+        if (true) {
             println("=== AAAAAA ===");
             for (auto reg : sorted) {
-                LiveRanges::printRange(reg, currentLiveRanges.currentLiveRanges[reg]);
+                currentLiveRanges.printRange(reg);
                 println("{}", regAlloc.debugString(regs[reg].first));
             }
         }
@@ -198,5 +208,6 @@ struct BetterAllocator : Allocator<CTX> {
 
         return mapa;
     }
+
 
 };
