@@ -85,7 +85,8 @@ public:
 
     [[nodiscard]]
     ParserResult<Token<T>, T> getAssert(T type) {
-        if (!isPeekType(type)) return unexpected(WrongToken<T>(type, getToken(), ""));
+        if (!isPeekType(type))
+            return unexpected(WrongToken<T>(type, getToken(), ""));
 
         auto t = getTokenOffset(0).value();
         consume();
@@ -94,7 +95,8 @@ public:
 
     [[nodiscard]]
     ParserResult<Token<T>, T> getAssert(T type, string_view name) {
-        if (!isPeekType(type)) return unexpected(WrongToken<T>(type, getToken(), string(name)));
+        if (!isPeekType(type))
+            return unexpected(WrongToken<T>(type, getToken(), string(name)));
 
         auto t = getTokenOffset(0).value();
         consume();
@@ -106,6 +108,15 @@ public:
 
         auto t =  *this->getToken();
         consume();
+
+        return t;
+    }
+
+    ParserResult<Token<T>, T> peekNext() {
+        if (this->isDone())
+            return unexpected{OutOfTokens{}};
+
+        auto t =  *this->getToken();
 
         return t;
     }
