@@ -729,6 +729,12 @@ constexpr string safeSymbol(string_view in) {
     return out;
 }
 
+inline std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+    return s;
+}
+
+
 #ifdef __clang__
 #define STACK_BASE_ADDRESS() ({auto stuff = 0; &stuff;})
 #else
