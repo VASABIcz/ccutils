@@ -1,4 +1,22 @@
-C++ utilities for (mainly) building compilers
+## C++ utilities for (mainly) building compilers
+
+
+## NI-GEN project
+
+### goals:
+- IR for representing x86 (similar to LLVM mir)
+- lowering pass from CFG SSA IR into x86 IR
+- live range pass on x86 IR
+- build interference graph
+- graph coloring register allocation
+- spilling/spliting strategy / x86 IR rewriting
+- register allocator needs to support precollored values (calling convention, div)
+
+### simplifications:
+ - only 64bit regs for simplicity
+ - no FPU regs for simplicity
+
+---
 
 
 ### structure:
