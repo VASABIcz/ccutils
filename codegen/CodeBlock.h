@@ -261,6 +261,14 @@ public:
         instructions.insert(instructions.begin()+id, std::move(instruction));
     }
 
+    void replace(unique_ptr<IRInstruction<CTX>> instruction, size_t id) {
+        instructions[id] = std::move(instruction);
+    }
+
+    void remove(size_t id) {
+        instructions.erase(instructions.begin()+id);
+    }
+
     template<typename T, typename ...Args>
     void insertInst(size_t id, Args&&... args) {
         instructions.emplace(instructions.begin()+id, createInstruction<T>(std::forward<Args>(args)...));

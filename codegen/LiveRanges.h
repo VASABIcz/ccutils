@@ -267,7 +267,7 @@ class LiveRanges {
     }
 
     bool isAnyAlive(SSARegisterHandle reg, std::pair<size_t, size_t> range) const {
-        assert(range.first >= 0);
+        // assert(range.first >= 0);
         assert(range.second < length());
         assert(range.second >= range.first);
         for (auto i = range.first; i <= range.second; i++) {
@@ -277,7 +277,7 @@ class LiveRanges {
     }
 
     bool isAnyAlive(size_t reg, std::pair<size_t, size_t> range) const {
-        assert(range.first >= 0);
+        // assert(range.first >= 0);
         assert(range.second < length());
         assert(range.second >= range.first);
         for (auto i = range.first; i <= range.second; i++) {

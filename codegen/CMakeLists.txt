@@ -32,6 +32,7 @@ add_library(vi_codegen_x86 OBJECT
         x86/X86Assembler.cpp
         x86/RegAlloc.h
         x86/RegAlloc.cpp
+        x86/x86_insts.h
 )
 
 target_link_libraries(vi_codegen PRIVATE ccutils)
@@ -64,3 +65,6 @@ llvm_map_components_to_libnames(llvm_libs support core irreader)
 # Link against LLVM libraries
 # target_link_libraries(llvm_toy ${llvm_libs})
 target_link_libraries(llvm_toy LLVM)
+
+add_executable(x86_ir x86/x86IR.cpp)
+target_link_libraries(x86_ir PRIVATE ccutils)

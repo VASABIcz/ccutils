@@ -138,11 +138,12 @@ struct Arg {
         return idk;
     }
 
-    static Arg Rel32Val(size_t symbol, int32_t adent = 0) {
+    static Arg Rel32Val(size_t type, size_t symbol, int32_t adent = 0) {
         Arg idk;
         idk.symbol = symbol;
         idk.type = Type::SYMBOL_RIP_VALUE_32;
         idk.offset = adent;
+        idk.symbolType = type;
 
         return idk;
     }

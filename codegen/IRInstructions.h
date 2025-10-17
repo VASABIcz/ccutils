@@ -620,8 +620,9 @@ namespace instructions {
         PUB_VIRTUAL_COPY(PointerStore)
         SSARegisterHandle ptr;
         SSARegisterHandle value;
+        i64 offset;
 
-        PointerStore(SSARegisterHandle ptr, SSARegisterHandle value): NamedIrInstruction<"ptr_store", CTX>(SSARegisterHandle::invalid()), ptr(ptr), value(value) {}
+        PointerStore(SSARegisterHandle ptr, SSARegisterHandle value, i64 offset = 0): NamedIrInstruction<"ptr_store", CTX>(SSARegisterHandle::invalid()), ptr(ptr), value(value), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(ptr);
@@ -637,7 +638,7 @@ namespace instructions {
             auto valueReg = gen.getReg(value);
             auto valueSize = gen.sizeBytes(value);
 
-            gen.assembler.writeMem(ptrReg, valueReg, 0, valueSize);
+            gen.assembler.writeMem(ptrReg, valueReg, offset, valueSize);
         }
     };
 

@@ -51,6 +51,8 @@ struct StackAllocator {
     };
 
     size_t allocateStack(size_t amountBytes) {
+        if (amountBytes == 0) amountBytes = 1;
+        assert(amountBytes > 0);
         const auto canAllocateStackRange = [&](auto start, auto size) {
             for (auto i: views::iota(start, start + size)) {
                 if (stack[i]) return false;

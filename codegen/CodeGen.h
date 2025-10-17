@@ -10,6 +10,7 @@
 #include "Assembler.h"
 #include "optimizations.h"
 #include "allocators/SimpleAllocator.h"
+#include "codegen/x86/x86IR.h"
 #include "x86/RegAlloc.h"
 
 using namespace std;
@@ -95,12 +96,16 @@ public:
         // optimizePhis<CTX>(irGen);
         // optimizePhis<CTX>(irGen);
         // optimizePhis<CTX>(irGen);
+        irGen.graph.genPhis();
 
         if (false) {
             println("=== BEFOR FLAT ===");
             irGen.print();
             println("=== AFTER FLAT ===");
         }
+
+        Lower<CTX> l;
+        l.lowerIR(irGen.graph);
 
         flatBlocks = irGen.graph.flattenBlocks();
 
@@ -112,7 +117,7 @@ public:
 
         auto [tt, lookup] = g.blockOffsets(flatBlocks);
 
-        g.forEachInstruction([&](auto& inst, auto& block, auto id) {
+/*        g.forEachInstruction([&](auto& inst, auto& block, auto id) {
             if (inst.template is<X86Call>()) {
                 for (auto reg : x86::SYSV_CALLER) {
                     auto intId = currentLiveRanges.addRange(SSARegisterHandle::invalid());
@@ -120,7 +125,7 @@ public:
                     currentLiveRanges.appendRange(intId, lookup[block.id()]+id, true);
                 }
             }
-        });
+        });*/
 
         fixUnliveRanges();
         fixupPhiLiveRanges(flatBlocks);
@@ -139,7 +144,7 @@ public:
         } while (didOptimize);
         optimizeCumulativeOps<CTX>(irGen, flatBlocks, currentLiveRanges);*/
 
-        optimizations::forceStackAlloc<CTX>(irGen);
+        // optimizations::forceStackAlloc<CTX>(irGen);
 
         if (printLiveRanges) currentLiveRanges.doPrintLiveRanges();
 

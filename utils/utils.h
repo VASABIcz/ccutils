@@ -96,6 +96,8 @@ namespace std {
 
 #define DEBUG_INFO(name) public: [[nodiscard]] const string_view className() const override {return #name;} private:
 
+#define DEBUG_INFO2(name) [[nodiscard]] const string_view className() const override {return #name;}
+
 #define TRY(...) ({auto _it = __VA_ARGS__; if (!_it.has_value()) return unexpected(std::move(_it.error())); std::move(*_it); })
 #define TRYNULL(x) ({auto _it = x; if (!_it.has_value()) return nullptr; std::move(*_it); })
 #define TRYA(x) ({auto _it = x; if (!_it.has_value()) return Err(std::move(_it.error())); *_it; })

@@ -43,9 +43,17 @@ namespace instructions {
     template<typename CTX>
     struct Alloca;
     template<typename CTX>
+    struct AllocaPtr;
+    template<typename CTX>
     struct Arg;
     template<typename CTX>
     struct PointerStore;
     template<typename CTX>
     struct PointerLoad;
+    template<typename CTX>
+    struct IntLiteral;
+    template<typename CTX>
+    struct Return;
+    template<typename CTX>
+    struct VoidReturn;
 }

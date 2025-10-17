@@ -112,6 +112,16 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         return s;
     }
 
+    SSARegisterHandle getSrc(size_t idex) {
+        auto srcs = getSources();
+
+        return srcs[idex];
+    }
+
+    size_t srcCount() {
+        return getSources().size();
+    }
+
     std::set<SSARegisterHandle> allValidRegs() {
         std::set<SSARegisterHandle> s;
         visitSrcs([&](auto x) {
@@ -162,8 +172,8 @@ struct IR2Instruction2: public IRInstruction<CTX> {
     IRInstruction<CTX>(tgt, std::move(name)), lhs(lhs), rhs(rhs) {}
 
     void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-        fn(rhs);
         fn(lhs);
+        fn(rhs);
     }
 
     void print(CTX::IRGEN &gen, std::ostream& stream) override {

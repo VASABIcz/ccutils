@@ -50,7 +50,9 @@ struct ControlFlowGraph {
     void patchInst(SSARegisterHandle target, Argz... argz) {
         for (auto& block : this->validNodesConst()) {
             for (auto& inst : block->getInstructionsMut()) {
-                inst.uPtrRef() = make_unique<T>(target, argz...);
+                if (inst->target == target) {
+                    inst.uPtrRef() = make_unique<T>(target, argz...);
+                }
             }
         }
     }
@@ -61,6 +63,17 @@ struct ControlFlowGraph {
             for (auto& inst : block->getInstructionsMut()) {
                 if (inst.get() == target) {
                     inst.uPtrRef() = make_unique<T>(argz...);
+                }
+            }
+        }
+    }
+
+    template<template<typename>typename T, typename... Argz>
+    void patchInst(IRInstruction<CTX>* target, Argz... argz) {
+        for (auto& block : this->validNodesConst()) {
+            for (auto& inst : block->getInstructionsMut()) {
+                if (inst.get() == target) {
+                    inst.uPtrRef() = make_unique<T<CTX>>(argz...);
                 }
             }
         }
@@ -783,6 +796,49 @@ struct ControlFlowGraph {
         return registers;
     }
 
+    BaseBlock* getBlock(IRInstruction<CTX>* inst1) {
+        for (auto& block : this->validNodesConst()) {
+            for (auto& inst : block->getInstructionsMut()) {
+                if (inst.get() == inst1) return block;
+            }
+        }
+    }
+
+    using InstHandle = std::pair<BlockId, size_t>;
+
+    InstHandle getInstPos(IRInstruction<CTX>* inst1) {
+        for (auto& block : this->validNodesConst()) {
+            size_t i = 0;
+            for (auto& inst : block->getInstructionsMut()) {
+                if (inst.get() == inst1) return {block->id(), i};
+                i += 1;
+            }
+        }
+        PANIC()
+    }
+
+    void removeInstruction(InstHandle h) {
+        getBlock(h.first).remove(h.second);
+    }
+
+    void insertInstruction(InstHandle h, std::unique_ptr<IRInstruction<CTX>> inst, bool replace) {
+        if (replace) {
+            getBlock(h.first).replace(std::move(inst), h.second);
+        } else {
+            getBlock(h.first).insert(std::move(inst), h.second);
+        }
+    }
+
+    template<typename INST, typename... Args>
+    void insertInstruction(InstHandle h, Args... args) {
+        insertInstruction(h, std::make_unique<INST>(std::forward<Args>(args)...), false);
+    }
+
+    template<typename INST, typename... Args>
+    void replaceInstruction(InstHandle h, Args... args) {
+        insertInstruction(h, std::make_unique<INST>(std::forward<Args>(args)...), true);
+    }
+
     optional<typename CTX::REG*> getRegisterByName(string_view name) {
         for (auto& reg : views::reverse(registers)) {
             if (reg->name == name) {
@@ -858,7 +914,7 @@ struct ControlFlowGraph {
 
             auto oldTgt = inst.target;
             if (badBoys.contains(oldTgt)) {
-                auto nH = pushRegister(std::make_unique<typename CTX::REG>(getRecord(inst.target).clone()));
+                auto nH = pushRegister(std::make_unique<typename CTX::REG>(getRecord(inst.target).copy()));
                 inst.target = nH;
                 reachable[oldTgt] = nH;
             }

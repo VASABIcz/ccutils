@@ -2,7 +2,6 @@
 
 #include "forward.h"
 #include "IRInstructions.h"
-#include "IRInstructions.h"
 
 namespace optimizations {
     /*bool optimizeSimpleReturns(IRGen& gen) {
