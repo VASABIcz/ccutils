@@ -86,8 +86,8 @@ void X86mc::movReg(const x86::X64Register& dest, const x86::X64Register& src) {
     writeRegInst(X64Instruction::mov, dest, src);
 }
 
-void X86mc::writeStack(int byteOffset, const x86::X64Register& reg) {
-    writePtr(x86::Rsp, reg, byteOffset);
+ImmSpace X86mc::writeStack(int byteOffset, const x86::X64Register& reg) {
+    return writePtr(x86::Rsp, reg, byteOffset);
 }
 
 u8 X86mc::applyRegs(unsigned char value, const x86::X64Register& dest, const x86::X64Register& src) {
@@ -213,23 +213,23 @@ ImmSpace X86mc::mov(const x86::X64Register& dest, size_t value) {
     return writeImmValue(value);
 }
 
-void X86mc::writePtr(const x86::X64Register& dst, const x86::X64Register& src, int offset, SibScale scale) {
+ImmSpace X86mc::writePtr(const x86::X64Register& dst, const x86::X64Register& src, int offset, SibScale scale) {
     writeRex(true, src.isExt(), dst.isExt());
     writeMRCode(X64Instruction::mov);
 
-    someOffsetStuffForMov(src, dst, offset);
+    return someOffsetStuffForMov(src, dst, offset);
 }
 
 // FIXME src dest is swaped
-void X86mc::readPtr(const x86::X64Register& dst, const x86::X64Register& src, int offset, SibScale scale) {
+ImmSpace X86mc::readPtr(const x86::X64Register& dst, const x86::X64Register& src, int offset, SibScale scale) {
     writeRex(true, dst.isExt(), src.isExt());
     writeRMCode(X64Instruction::mov);
 
-    someOffsetStuffForMov(dst, src, offset);
+    return someOffsetStuffForMov(dst, src, offset);
 }
 
-void X86mc::readStack(int byteOffset, const x86::X64Register& tgt) {
-    readPtr(tgt, x86::Rsp, byteOffset);
+ImmSpace X86mc::readStack(int byteOffset, const x86::X64Register& tgt) {
+    return readPtr(tgt, x86::Rsp, byteOffset);
 }
 
 void X86mc::writeMovZX8(const x86::X64Register& dest, const x86::X64Register& src) {
@@ -322,7 +322,7 @@ void X86mc::callMC(size_t address) {
     writeImmValue(address);
 }
 
-void X86mc::someOffsetStuffForMov(x86::X64Register dst, x86::X64Register src, int32_t offset) {
+ImmSpace X86mc::someOffsetStuffForMov(x86::X64Register dst, x86::X64Register src, int32_t offset) {
     auto srcEncoding = src.getEncoding();
 
     bool is32BitOffset = offset > 127 || offset < -128;
@@ -346,16 +346,18 @@ void X86mc::someOffsetStuffForMov(x86::X64Register dst, x86::X64Register src, in
 
     switch (type) {
         case ModRmType::DEREF:
+            return {0,0};
             break;
         case ModRmType::DEREF_8:
-            writeImmValue(static_cast<char>(offset));
+            return writeImmValue(static_cast<char>(offset));
             break;
         case ModRmType::DEREF_32:
-            writeImmValue(offset);
+            return writeImmValue(offset);
             break;
         case ModRmType::NO_DEREF:
             PANIC();
     }
+    PANIC()
 }
 
 void X86mc::leave() {
@@ -386,7 +388,7 @@ ImmSpace X86mc::lea(const x86::X64Register& dest, const x86::X64Register& value,
 
     if (value == x86::Rsp) {
         pushBack(0b10 << 6 | dest.getEncoding() << 3 | 0b100); // FIXME isnt this encoded RSP? => this line is the same is in else?
-        pushBack(0x24);
+        pushBack(0x24); // this is SIB right? :)
     }
     else {
         pushBack(0b10 << 6 | dest.getEncoding() << 3 | value.getEncoding());

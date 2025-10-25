@@ -26,7 +26,8 @@ enum class X64Instruction: u8 {
     Test = 0x85,
     Call = 0xFF,
     inc = 0xFF,
-    lea = 0x8D
+    lea = 0x8D,
+    dec = 0xFF
 };
 
 // FIXME swapped endianness
@@ -201,6 +202,10 @@ private:
 
 inline X64Register fromRawWithExt(uint8_t encoded, bool isExt) {
     return isExt ? (X64RegisterType)(((int)X64RegisterType::R8)+encoded) : (X64RegisterType)encoded;
+}
+
+inline X64Register fromRaw(uint8_t encoded) {
+    return (X64RegisterType)encoded;
 }
 
 #define REEG(nam) constexpr static X64Register nam = X64RegisterType::nam;

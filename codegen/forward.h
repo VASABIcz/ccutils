@@ -13,6 +13,12 @@ class IRGen;
 template<typename CTX>
 class CodeBlock;
 
+template<typename CTX>
+struct ControlFlowGraph;
+
+template<typename CTX>
+class IRInstruction;
+
 namespace instructions {
     template<typename CTX>
     struct PhiFunction;
@@ -57,3 +63,6 @@ namespace instructions {
     template<typename CTX>
     struct VoidReturn;
 }
+
+template<typename CTX>
+struct Allocator;

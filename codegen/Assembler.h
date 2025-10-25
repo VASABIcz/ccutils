@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "BinaryOutput.h"
+#include "JumpCondType.h"
 
 using namespace std;
 
@@ -12,39 +13,6 @@ using namespace std;
 #define WRAPPED_FLOAT(t) { arithmeticFloat(BinaryOp::t, FloatingPointType::Float, dest, left, right); }
 #define WRAPPED_DOUBLE(t) { arithmeticFloat(BinaryOp::t, FloatingPointType::Double, dest, left, right); }
 #define WRAPPED_CAST(t, a, b) { castType(dest, value, TypeCast::t, BaseDataType::a, BaseDataType::b); }
-
-enum class JumpCondType {
-    EQUALS,
-    NOT_EQUALS,
-    GREATER,
-    GREATER_OR_EQUAL,
-    LESS,
-    LESS_OR_EQUAL
-};
-
-inline string_view toString1(JumpCondType type) {
-    switch (type) {
-        case JumpCondType::EQUALS: return "==";
-        case JumpCondType::NOT_EQUALS: return "!=";
-        case JumpCondType::GREATER: return ">";
-        case JumpCondType::GREATER_OR_EQUAL: return ">=";
-        case JumpCondType::LESS: return "<";
-        case JumpCondType::LESS_OR_EQUAL: return "<=";
-        default: PANIC();
-    }
-}
-
-inline JumpCondType negateType(JumpCondType type) {
-    switch (type) {
-        case JumpCondType::EQUALS: return JumpCondType::NOT_EQUALS;
-        case JumpCondType::NOT_EQUALS: return JumpCondType::EQUALS;
-        case JumpCondType::GREATER: return JumpCondType::LESS_OR_EQUAL;
-        case JumpCondType::GREATER_OR_EQUAL: return JumpCondType::LESS;
-        case JumpCondType::LESS: return JumpCondType::GREATER_OR_EQUAL;
-        case JumpCondType::LESS_OR_EQUAL: return JumpCondType::GREATER;
-        default:PANIC();
-    }
-}
 
 class Assembler {
 public:

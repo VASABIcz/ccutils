@@ -5,7 +5,6 @@
 
 #include "CodeBlock.h"
 #include "SSARegisterHandle.h"
-#include "IRGen.h"
 #include "CodeGen.h"
 #include "Assembler.h"
 
@@ -508,7 +507,7 @@ namespace instructions {
                 gen.assembler.movUnsigned(res, value);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "{}", isSigned ? stringify(std::bit_cast<intmax_t>(value)) : stringify(value));
         }
     };
@@ -590,7 +589,7 @@ namespace instructions {
             fn(obj);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "{}", obj);
         }
 
@@ -607,7 +606,7 @@ namespace instructions {
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "");
         }
 
@@ -654,7 +653,7 @@ namespace instructions {
             fn(ptr);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "{}", ptr);
         }
 
@@ -678,7 +677,7 @@ namespace instructions {
             fn(subject);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "{}", subject);
         }
 
@@ -701,7 +700,7 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "{}", size);
         }
 
@@ -721,7 +720,7 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(CTX::IRGEN&, std::ostream& stream) override {
             this->basePrint(stream, "{}", size);
         }
 

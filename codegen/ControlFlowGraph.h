@@ -14,6 +14,22 @@ struct ControlFlowGraph {
 
     ControlFlowGraph() = default;
 
+    void print() {
+        this->printRegisters();
+        for (auto& block : this->validNodes()) {
+            const auto & instructions = block->getInstructions();
+            println("{}", block->tag);
+            if (instructions.empty()) {
+                println("  _ := TERMINAL");
+            }
+            for (auto& instruction : instructions) {
+                cout << "  ";
+                instruction->print(*static_cast<CTX::IRGEN*>(nullptr));
+            }
+        }
+    }
+
+
     BaseBlock& getBlock(BlockId blockId) {
         if (not nodes.contains(blockId)) PANIC();
         return *nodes.at(blockId);
@@ -789,7 +805,7 @@ struct ControlFlowGraph {
     }
 
     SSARegisterHandle allocateDummy() {
-        return pushRegister(std::make_unique<typename CTX::REG>(*registers[0]));
+        return pushRegister(std::make_unique<typename CTX::REG>(CTX::REG::makeDummy()));
     }
 
     span<CopyPtr<typename CTX::REG>> getRegisters() {

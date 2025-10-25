@@ -21,6 +21,8 @@ add_library(vi_codegen OBJECT
         allocators/BetterAllocator.h
         LiveRanges.h
         BlockId.h
+        CodeGenImpl.h
+        JumpCondType.h
 )
 
 add_subdirectory(../gen64 build)
@@ -33,6 +35,7 @@ add_library(vi_codegen_x86 OBJECT
         x86/RegAlloc.h
         x86/RegAlloc.cpp
         x86/x86_insts.h
+        x86/emit_x86.h
 )
 
 target_link_libraries(vi_codegen PRIVATE ccutils)
