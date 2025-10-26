@@ -40,7 +40,7 @@ struct EmitCtx {
 
     // outs
     std::map<size_t, std::vector<ImmSpace>> symbols;
-    std::map<size_t, std::vector<ImmSpace>> stackSlots;
+    std::map<size_t, std::vector<std::pair<ImmSpace, long>>> stackSlots;
     std::map<Block*, std::vector<ImmSpace>> jumps;
     std::map<Block*, size_t > blockOffs;
 
@@ -61,8 +61,8 @@ struct EmitCtx {
         jumps[id].push_back(space);
     };
 
-    auto requestStack(StackSlot id, ImmSpace space) {
-        stackSlots[id.id].push_back(space);
+    auto requestStack(StackSlot id, ImmSpace space, long adend = 0) {
+        stackSlots[id.id].emplace_back(space, adend);
     };
 
     void linkJmp() {
@@ -78,8 +78,8 @@ struct EmitCtx {
     void patchStack() {
         size_t i = 0;
         for (auto stack : stackSlots) {
-            for (auto slot : stack.second) {
-                mc.patchRaw(slot, i*8+8);
+            for (auto [slot, adend] : stack.second) {
+                mc.patchRaw(slot, i*8+8+adend);
             }
             i += 1;
         }
@@ -120,10 +120,10 @@ struct EmitCtx {
                     mc.readMem(getReg(it->defs[0]), getReg(it->uses[0]), it->imm, 8);
                 },
                 CASE_VAL(LOADMEM*) {
-                    mc.readMem(getReg(it->defs[0]), getReg(it->uses[0]), 0, 8);
+                    mc.readMem(getReg(it->defs[0]), getReg(it->uses[0]), it->offset, 8);
                 },
                 CASE_VAL(STOREMEM*) {
-                    mc.writeMem(getReg(it->uses[0]), getReg(it->uses[1]), 0, 8);
+                    mc.writeMem(getReg(it->uses[0]), getReg(it->uses[1]), it->offset, 8);
                 },
                 CASE_VAL(CMP*) {
                     mc.writeRegInst(X64Instruction::cmp, getReg(it->uses[0]), getReg(it->uses[1]));
@@ -151,11 +151,11 @@ struct EmitCtx {
                 },
                 CASE_VAL(STORESTACK*) {
                     auto imm = mc.writeStack(500'000, getReg(it->uses[0]));
-                    requestStack(it->slot, imm);
+                    requestStack(it->slot, imm, it->offset);
                 },
                 CASE_VAL(LOADSTACK*) {
                     auto imm = mc.readStack(500'000, getReg(it->defs[0]));
-                    requestStack(it->slot, imm);
+                    requestStack(it->slot, imm, it->offset);
                 },
                 CASE_VAL(MUL*) {
                     mc.writeRegInst(SusX64Instruction::imul, getReg(it->defs[0]), getReg(it->uses[1]));

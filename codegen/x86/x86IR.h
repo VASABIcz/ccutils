@@ -248,7 +248,10 @@ struct CMPIMM : X86Instruction {
 
 struct LOADMEM : X86Instruction {
     DEBUG_INFO2(LOADMEM)
-    LOADMEM(BaseRegister* dst, BaseRegister* src) {
+
+    long offset;
+
+    LOADMEM(BaseRegister* dst, BaseRegister* src, long offset): offset(offset) {
         this->defs.push_back(dst);
         this->uses.push_back(src);
     }
@@ -256,16 +259,11 @@ struct LOADMEM : X86Instruction {
 
 struct STOREMEM : X86Instruction {
     DEBUG_INFO2(STOREMEM)
-    STOREMEM(BaseRegister* dst, BaseRegister* src) {
-        this->uses.push_back(dst);
-        this->uses.push_back(src);
-    }
-};
 
-struct MOVMEMOFFSET : X86Instruction {
-    DEBUG_INFO2(MOVMEMOFFSET)
-    MOVMEMOFFSET(BaseRegister* dst, BaseRegister* src, long offset) {
-        this->defs.push_back(dst);
+    long offset;
+
+    STOREMEM(BaseRegister* dst, BaseRegister* src, long offset): offset(offset) {
+        this->uses.push_back(dst);
         this->uses.push_back(src);
     }
 };
@@ -973,6 +971,7 @@ struct Lower {
     size_t virtCounter = 0;
     std::map<size_t, size_t> allocas;// stackSlot - size bytes
     size_t stackCounter = 0;
+    std::map<void*, StackSlot> allocaSlots;
 
     StackSlot allocateStack(size_t size, size_t alignment) {
         // FIXME this is retarded
@@ -1295,6 +1294,14 @@ struct Lower {
                     block->push<RET>(std::initializer_list<BaseRegister*>{new Physical(x86::Rax)});
                 })
 
+            .makeRewrite(
+                makePattern<instructions::ReturnCompound>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
+                    block->push<MOV>(new Physical(x86::Rdx), getReg(*inst[1]));
+                    block->push<RET>(std::initializer_list<BaseRegister*>{new Physical(x86::Rax), new Physical(x86::Rdx)});
+                })
+
             // mov rax, imm
             // ret
             .makeRewrite(
@@ -1309,18 +1316,29 @@ struct Lower {
                     block->push<MOVMEMIMM>(getReg(*inst), getReg(*inst[0][0]), getImm(*inst[0][1]));
                 })
 
-            // mov rax, [*]
+            .makeRewrite(
+                makePattern<instructions::PointerLoad>(makePattern<instructions::AllocaPtr>()),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<LOADSTACK>(getReg(*inst), allocaSlots[inst[0].inst], inst->template cst<instructions::PointerLoad>()->offset);
+                })
+
+            .makeRewrite(
+                makePattern<instructions::PointerStore>(makePattern<instructions::AllocaPtr>(), WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<STORESTACK>(getReg(*inst[1]), allocaSlots[inst[0].inst], inst->template cst<instructions::PointerStore>()->offset);
+                })
+
             .makeRewrite(
                 makePattern<instructions::PointerLoad>(WILD),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<LOADMEM>(getReg(*inst), getReg(*inst[0]));
+                    block->push<LOADMEM>(getReg(*inst), getReg(*inst[0]), inst->template cst<instructions::PointerLoad>()->offset);
                 })
 
             // mov rax, [*]
             .makeRewrite(
                 makePattern<instructions::PointerStore>(WILD, WILD),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<STOREMEM>(getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<STOREMEM>(getReg(*inst[0]), getReg(*inst[1]), inst->template cst<instructions::PointerStore>()->offset);
                 })
 
             .makeRewrite(
@@ -1386,7 +1404,9 @@ struct Lower {
             .makeRewrite(
                 makePattern<instructions::AllocaPtr>(),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<LEASTACK>(getReg(*inst), allocateStack(inst->template cst<instructions::AllocaPtr>()->size, 8));
+                    auto alloc = allocateStack(inst->template cst<instructions::AllocaPtr>()->size, 8);
+                    block->push<LEASTACK>(getReg(*inst), alloc);
+                    allocaSlots[inst.inst] = alloc;
                 })
 
             .makeRewrite(
@@ -1442,6 +1462,13 @@ struct Lower {
 
             .makeRewrite(
                 makeWildPattern<x86::inst::CallRIP<CTX>>(),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
+                    l.emitCall(inst->target, insts, block, inst->template cst<x86::inst::CallRIP>()->id);
+                })
+
+            .makeRewrite(
+                makeWildPattern<instructions::BitExtract<CTX>>(),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
                     l.emitCall(inst->target, insts, block, inst->template cst<x86::inst::CallRIP>()->id);

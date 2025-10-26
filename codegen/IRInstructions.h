@@ -490,6 +490,30 @@ namespace instructions {
     };
 
     template<typename CTX>
+    struct ReturnCompound: public NamedIrInstruction<"return_compound", CTX> {
+        PUB_VIRTUAL_COPY(ReturnCompound)
+
+        std::vector<SSARegisterHandle> parts;
+
+        explicit ReturnCompound(std::vector<SSARegisterHandle> parts): NamedIrInstruction<"return_compound", CTX>(SSARegisterHandle::invalid()), parts(std::move(parts)) {}
+
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& s : parts) fn(s);
+        }
+
+        void generate(CTX::GEN&) override {
+            TODO()
+        }
+
+        void print(CTX::IRGEN&, std::ostream& stream) override {
+            this->basePrint(stream, "{}", parts);
+        }
+
+        bool isTerminal() const override {return true;}
+    };
+
+    template<typename CTX>
     struct IntLiteral: public NamedIrInstruction<"int", CTX> {
         PUB_VIRTUAL_COPY(IntLiteral)
         size_t value;
@@ -629,7 +653,7 @@ namespace instructions {
         }
 
         void print(CTX::IRGEN&, std::ostream& stream) override {
-            this->basePrint(stream, "{} {}", ptr, value);
+            this->basePrint(stream, "{}+{} <- {}", ptr, offset, value);
         }
 
         void generate(CTX::GEN& gen) override {
@@ -654,7 +678,7 @@ namespace instructions {
         }
 
         void print(CTX::IRGEN&, std::ostream& stream) override {
-            this->basePrint(stream, "{}", ptr);
+            this->basePrint(stream, "{}+{}", ptr, offset);
         }
 
         void generate(CTX::GEN& gen) override {
@@ -728,6 +752,49 @@ namespace instructions {
             // handled by CodeGen
         }
     };
+
+    template<typename CTX>
+    struct BitExtract: public NamedIrInstruction<"bit_extract", CTX> {
+        PUB_VIRTUAL_COPY(BitExtract)
+        SSARegisterHandle subject;
+        i64 offset;
+        i64 size;
+
+        BitExtract(SSARegisterHandle target, SSARegisterHandle subject, i64 offset, i64 size): NamedIrInstruction<"bit_extract", CTX>(target), subject(subject), offset(offset), size(size) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            fn(subject);
+        }
+
+        void print(CTX::IRGEN&, std::ostream& stream) override {
+            this->basePrint(stream, "{}[{}..<{}]", subject, offset, offset+size);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct MakeCompound: public NamedIrInstruction<"make_compound", CTX> {
+        PUB_VIRTUAL_COPY(MakeCompound)
+        std::vector<SSARegisterHandle> inputs;
+
+        MakeCompound(SSARegisterHandle target, std::vector<SSARegisterHandle> inputs): NamedIrInstruction<"make_compound", CTX>(target), inputs(inputs) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& input : inputs) fn(input);
+        }
+
+        void print(CTX::IRGEN&, std::ostream& stream) override {
+            this->basePrint(stream, "{}", inputs);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
 }
 
 /*

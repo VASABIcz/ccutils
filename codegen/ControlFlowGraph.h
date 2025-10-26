@@ -29,6 +29,68 @@ struct ControlFlowGraph {
         }
     }
 
+    std::vector<BlockId> getTargets(BlockId id) {
+        return getBlock(id).getTargets();
+    }
+
+    enum COLOR {
+        BLACK,
+        GREY
+    };
+
+    // src: https://eli.thegreenplace.net/2015/directed-graph-traversal-orderings-and-applications-to-data-flow-analysis/
+    void discoverBackEdgesRec(BlockId node, std::map<BlockId, COLOR>& color, std::map<BlockId, std::set<BlockId>>& res) {
+        color[node] = GREY;
+        for (auto succ : getTargets(node)) {
+            if (color.contains(succ) && color.at(succ) == GREY) {
+                res[node].insert(succ);
+            }
+            if (not color.contains(succ)) {
+                discoverBackEdgesRec(succ, color, res);
+            }
+        }
+        color[node] = BLACK;
+    }
+
+    std::map<BlockId, std::set<BlockId>> discoverBackEdges() {
+        std::map<BlockId, COLOR> color;
+        std::map<BlockId, std::set<BlockId>> res;
+
+        discoverBackEdgesRec(root().id(), color, res);
+
+        return res;
+    }
+
+
+    void filteredDFSRec(BlockId node, std::set<BlockId>& visited, std::vector<BlockId>& res, const std::map<BlockId, std::set<BlockId>>& ignore) {
+        if (visited.contains(node)) return;
+
+        visited.insert(node);
+
+        for (auto succ : getTargets(node)) {
+            // skip back edges
+            if (ignore.contains(node) && ignore.at(node).contains(succ)) continue;
+            filteredDFSRec(succ, visited, res, ignore);
+        }
+        res.push_back(node);
+    }
+
+    std::vector<BlockId> getPostOrder(BlockId node, const std::map<BlockId, std::set<BlockId>>& ignore) {
+        std::set<BlockId> visited;
+        std::vector<BlockId> res;
+        filteredDFSRec(node, visited, res, ignore);
+
+        return res;
+    }
+
+    std::vector<BlockId> getReversePostOrder() {
+        std::map<BlockId, std::set<BlockId>> idk;
+        auto postOrder = getPostOrder(root().id(), idk);
+
+        std::reverse(postOrder.begin(), postOrder.end());
+
+        return postOrder;
+    }
 
     BaseBlock& getBlock(BlockId blockId) {
         if (not nodes.contains(blockId)) PANIC();
