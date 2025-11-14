@@ -51,10 +51,34 @@ struct X86Instruction : Debuggable {
     std::vector<BaseRegister*> uses;
     std::vector<BaseRegister*> defs;
     std::vector<BaseRegister*> kills;
+    X86Instruction* prev;
+    X86Instruction* next;
+    long orderId = 0;
 
     bool hasDefVirt(size_t id) {
         for (auto def: defs) {
             auto virt = def->as<Virtual>();
+            if (virt == nullptr) continue;
+            if (virt->id == id) return true;
+        }
+        return false;
+    }
+
+    void rewriteDef(Virtual* old, Virtual* newReg) {
+        for (auto& def : defs) {
+            if (def->is<Virtual>() && def->as<Virtual>()->id == old->id) def = newReg;
+        }
+    }
+
+    void rewriteUse(Virtual* old, Virtual* newReg) {
+        for (auto& def : uses) {
+            if (def->is<Virtual>() && def->as<Virtual>()->id == old->id) def = newReg;
+        }
+    }
+
+    bool hasUseVirt(size_t id) {
+        for (auto use: uses) {
+            auto virt = use->as<Virtual>();
             if (virt == nullptr) continue;
             if (virt->id == id) return true;
         }
@@ -236,6 +260,14 @@ struct SETLS: X86Instruction {
     }
 };
 
+struct INT3: X86Instruction {
+    DEBUG_INFO2(INT3)
+};
+
+struct HLT: X86Instruction {
+    DEBUG_INFO2(HLT)
+};
+
 struct CMPIMM : X86Instruction {
     DEBUG_INFO2(CMPIMM)
 
@@ -331,16 +363,138 @@ struct JZ : X86Instruction {
 struct Block {
     size_t id = 0;
     std::string tag;
-    std::vector<X86Instruction*> insts;
+    X86Instruction* first = nullptr;
+    X86Instruction* last = nullptr;
     std::set<Block*> incoming;
     std::set<Block*> outgoing;
 
-    size_t insertPoint = 0;
+    X86Instruction* insertPoint = nullptr;
+
+    size_t size = 0;
+
+    struct Iterator {
+        X86Instruction* next;
+
+        void operator++() {
+            next = next->next;
+        }
+
+        X86Instruction*& operator*() {
+            return next;
+        }
+
+        bool operator==(const Iterator& other) const {
+            return this->next == other.next;
+        }
+    };
+
+    struct RevIterator {
+        X86Instruction* next;
+
+        void operator++() {
+            next = next->prev;
+        }
+
+        X86Instruction*& operator*() {
+            return next;
+        }
+
+        bool operator==(const RevIterator& other) const {
+            return this->next == other.next;
+        }
+    };
+
+    struct Iter {
+        X86Instruction* start;
+
+        Iterator begin() {
+            return Iterator{start};
+        }
+
+        Iterator end() {
+            return Iterator{nullptr};
+        }
+    };
+
+    struct RevIter {
+        X86Instruction* start;
+
+        RevIterator begin() {
+            return RevIterator{start};
+        }
+
+        RevIterator end() {
+            return RevIterator{nullptr};
+        }
+    };
+
+    Iter iterator() {
+        return Iter{this->first};
+    }
+
+    void insertBefore(X86Instruction* subj, X86Instruction* self) {
+        if (subj == first) first = self;
+        if (last == nullptr) last = self;
+
+        auto before = subj == nullptr ? nullptr : subj->prev;
+        auto after = subj;
+
+        insertBetweene(self, before, after);
+    }
+
+    static constexpr long STEP = 1024*1024;
+
+    void insertBetweene(X86Instruction* self, X86Instruction* before, X86Instruction* after) {
+        if (before != nullptr) before->next = self;
+        if (after != nullptr) after->prev = self;
+
+        self->prev = before;
+        self->next = after;
+
+        if (before == nullptr && after == nullptr) {
+            self->orderId = 0;
+        } else if (before == nullptr) {
+            self->orderId = after->orderId-STEP;
+        } else if (after == nullptr) {
+            self->orderId = before->orderId+STEP;
+        } else {
+            self->orderId = (before->orderId+after->orderId)/2;
+        }
+
+        size += 1;
+    }
+
+    void insertAfter(X86Instruction* subj, X86Instruction* self) {
+        if (first == nullptr) first = self;
+        if (last == subj) last = self;
+
+        auto before = subj;
+        auto after = subj == nullptr ? nullptr : subj->next;
+
+        insertBetweene(self, before, after);
+    }
+
+    void erase(X86Instruction* inst) {
+        assert(inst != nullptr);
+        auto before = inst->prev;
+        auto after = inst->next;
+
+        if (before != nullptr) before->next = after;
+        if (after != nullptr) after->prev = before;
+
+        if (first == inst) first = after;
+        if (last == inst) last = before;
+
+        size -= 1;
+    }
 
     template<typename T, typename... Args>
     void push(Args&&... args) {
-        insts.insert(insts.begin() + insertPoint, new T(args...));
-        insertPoint += 1;
+        auto self = new T(args...);
+
+        insertAfter(insertPoint, self);
+
+        insertPoint = self;
     }
 
     void addTarget(Block* b) {
@@ -373,7 +527,7 @@ static void printBlockInst(X86Instruction* inst, std::ostream& ss) {
 
 
 static void printBlock(Block* b) {
-    for (auto inst: b->insts) {
+    for (auto inst: b->iterator()) {
         if (inst->defs.size() == 1) {
             std::cout << inst->defs.front()->toString();
         } else {
@@ -397,26 +551,22 @@ static void printBlock(Block* b) {
     }
 }
 
+#define MIN_BY(a, b, op) (a op < b op) ? a : b
+#define MAX_BY(a, b, op) (a op > b op) ? a : b
+
 struct Range {
-    long start, end_ex;
-
-    size_t endInclusive() const {
-        return end_ex;
-    }
-
-    size_t endExclusive() const {
-        return end_ex;
-    }
+    X86Instruction* first;
+    X86Instruction* last;
 
     Range merge(Range other) {
-        auto start = std::min(this->start, other.start);
-        auto end = std::max(this->end_ex, other.end_ex);
+        auto start = MIN_BY(this->first, other.first, ->orderId);
+        auto end = MAX_BY(this->last, other.last, ->orderId);
 
         return Range{start, end};
     }
 
     static bool intersects(Range other, Range self) {
-        return (other.start >= self.start && other.start < self.end_ex) || (other.end_ex > self.start && other.end_ex <= self.end_ex);
+        return (other.first->orderId >= self.first->orderId && other.first->orderId <= self.last->orderId) || (other.last->orderId >= self.first->orderId && other.last->orderId <= self.last->orderId);
     }
 
     bool intersects(Range other) {
@@ -443,13 +593,34 @@ struct GraphColoring {
     std::vector<size_t> registers;
     std::map<size_t, x86::X64Register> allocated;
     std::map<size_t, std::set<size_t>> interference;
-    size_t regCount = 32;
+    size_t regCount = 16;
+    size_t regCounter = 0;
+
+    size_t interferenceCount(size_t reg) {
+        return this->interference[reg].size();
+    }
+
+    size_t getInterferenceMaxNeighbour(size_t reg) {
+        auto max = interferenceCount(reg);
+        auto worst = reg;
+
+        for (auto other : interference[reg]) {
+            if (other >= 50'000) continue; // HACK
+            auto otherInt = interferenceCount(other);
+            if (otherInt > max) {
+                max = otherInt;
+                worst = other;
+            }
+        }
+
+        return worst;
+    }
 
     static GraphColoring create(std::map<size_t, std::set<size_t>> interf) {
         GraphColoring self;
 
         std::vector<size_t> regs;
-        for (auto i: interf) {
+        for (auto i : interf) {
             regs.push_back(i.first);
         }
 
@@ -463,6 +634,14 @@ struct GraphColoring {
         allocated.emplace(id, color);
     }
 
+    bool doesRegInterfere(size_t self, x86::X64Register phyReg) {
+        for (auto inte: interference[self]) {
+            if (!allocated.contains(inte)) continue;
+            if (allocated.at(inte) == phyReg) return true;
+        }
+        return false;
+    };
+
     bool regAlloc(size_t i) {
         if (i == registers.size()) {
             println("[graph-color] SUCESSS!!!!");
@@ -471,22 +650,13 @@ struct GraphColoring {
 
         auto self = registers[i];
 
-        auto doesRegInterfere = [&](x86::X64Register reg) -> bool {
-          for (auto inte: interference[self]) {
-              if (!allocated.contains(inte)) continue;
-              if (allocated.at(inte) == reg) return true;
-          }
-          return false;
-        };
-
-
         if (allocated.contains(self)) {
             if (regAlloc(i + 1)) return true;
         } else {
             size_t sucesses = 0;
             for (auto j = 0ul; j < regCount; j++) {
                 if (j == x86::Rsp.getEncoding() || j == x86::Rbp.getEncoding()) continue;
-                if (doesRegInterfere(x86::fromRaw(j))) continue;
+                if (doesRegInterfere(self, x86::fromRaw(j))) continue;
                 sucesses += 1;
 
                 assert(!allocated.contains(self));
@@ -503,20 +673,117 @@ struct GraphColoring {
 
         return false;
     }
+
+    size_t getUncoloredReg() {
+        return registers[regCounter++];
+    }
+
+    std::optional<size_t> findColorForReg(size_t reg) {
+        for (auto j = 0ul; j < regCount; j++) {
+            if (j == x86::Rsp.getEncoding() || j == x86::Rbp.getEncoding()) continue;
+            if (doesRegInterfere(reg, x86::fromRaw(j))) continue;
+
+            assert(!allocated.contains(reg));
+            allocated.emplace(reg, x86::fromRaw(j));
+            println("[graph-color] allocating self: {}", reg);
+
+            return reg;
+        }
+
+        return std::nullopt;
+    }
+
+    bool hasUncoloredReg() {
+        return regCounter < registers.size();
+    }
+
+    std::optional<size_t> regAllocFast() {
+        while (hasUncoloredReg()) {
+            auto reg = getUncoloredReg();
+            if (this->allocated.contains(reg)) continue;
+            auto color = findColorForReg(reg);
+            if (not color.has_value()) return reg; // failed allocation
+        }
+
+        return std::nullopt;
+    }
+
+    std::string toGraphViz() {
+        std::string buffer;
+
+        buffer += "uniform graph {\n";
+        for (auto [self, others] : this->interference) {
+            for (auto other : others) {
+                buffer += stringify("{} -- {}\n", self, other);
+                buffer += "\n";
+            }
+        }
+
+        buffer += "}";
+
+        return buffer;
+    }
 };
 
 struct Graph {
     std::vector<Block*> blocks;
     Block* root = nullptr;
 
+    size_t virtCounter = 0;
+    size_t stackCounter = 0;
+
+    // live ranges
     std::map<Block*, std::map<size_t, Range>> virtualRanges;
     std::map<Block*, std::map<x86::X64Register, RangeSet>> physicalRanges;
+
+    std::string tag;
+
+    GraphColoring registerAllocate() {
+        size_t spillCounter = 0;
+
+        while (true) {
+            this->calcLiveRanges();
+
+            auto gc = this->buildAllocatorGraph();
+
+            auto res = gc.regAllocFast();
+            if (not res.has_value()) return gc;
+            println("[graph-color] FAILED to color {}", *res);
+
+            auto toSpill = gc.getInterferenceMaxNeighbour(*res);
+
+            println("[graph-color] spilling {}", toSpill);
+            this->spill(new Virtual{toSpill});
+
+            Graph::GVEmit ee1;
+            emitGV2(ee1);
+            writeBytesToFile(stringify("x86/{}-spill{}", tag, spillCounter), ee1.ss.str());
+
+            spillCounter += 1;
+        }
+    }
+
+    size_t allocVirtId() {
+        return virtCounter++;
+    }
+
+    Virtual* allocaVirtReg() {
+        return new Virtual{allocVirtId()};
+    }
+
+    size_t allocStack() {
+        return stackCounter++;
+    }
+
+    StackSlot allocStackSlot() {
+        return StackSlot{allocStack()};
+    }
 
     void prune() {
         std::set<size_t> used;
 
         for (auto b : blocks) {
-            for (auto inst : b->insts) {
+            for (auto inst : b->iterator()) {
                 for (auto use : inst->uses) {
                     if (auto v = use->as<Virtual>(); v) {
                         used.insert(v->id);
@@ -540,12 +807,12 @@ struct Graph {
 
         for (auto b : blocks) {
             std::set<X86Instruction*> toDelete;
-            for (auto inst : b->insts) {
+            for (auto inst : b->iterator()) {
                 if (canDelete(inst->defs)) {
                     toDelete.insert(inst);
                 }
             }
-            erase_if(b->insts, [&](X86Instruction* id) { return toDelete.contains(id); });
+            for (auto inst : toDelete) b->erase(inst);
         }
     }
 
@@ -558,41 +825,41 @@ struct Graph {
 
     void printLiveRange() {
         for (auto [id, block] : blocks | views::enumerate) {
-            println("BLOCK {} range 0..<{}", id, block->insts.size()-1);
+            println("BLOCK {} range 0..<{}", id, block->size-1);
             for (auto range : virtualRanges[block]) {
-                println("  v{} = {}..<{}", range.first, range.second.start, range.second.end_ex);
+                println("  v{} = {}..{}", range.first, range.second.first->orderId, range.second.last->orderId);
             }
         }
     }
 
-    long findDefVirt(Block* block, size_t start, size_t virtId) {
-        for (long i = start - 1; i >= 0; i--) {
-            if (block->insts[i]->hasDefVirt(virtId)) return i;
+    X86Instruction* findDefVirt(Block* block, X86Instruction* start, size_t virtId) {
+        for (auto inst : Block::RevIter{start->prev}) {
+            if (inst->hasDefVirt(virtId)) return inst;
         }
-        return -1;
+        return nullptr;
     }
 
 
-    long findDefPhy(Block* block, size_t start, x86::X64Register phyId) {
-        for (long i = start - 1; i >= 0; i--) {
-            if (block->insts[i]->hasDefPhy(phyId)) return i;
+    X86Instruction* findDefPhy(Block* block, X86Instruction* start, x86::X64Register phyId) {
+        for (auto inst : Block::RevIter{start->prev}) {
+            if (inst->hasDefPhy(phyId)) return inst;
         }
-        return -1;
+        return nullptr;
     }
 
-    void markLiveVirt(Block* b, long start, long endIncl, size_t virtId) {
+    void markLiveVirt(Block* b, X86Instruction* start, X86Instruction* endIncl, size_t virtId) {
         if (virtualRanges[b].contains(virtId)) {
-            virtualRanges[b][virtId] = virtualRanges[b][virtId].merge(Range{start, endIncl + 1});
+            virtualRanges[b][virtId] = virtualRanges[b][virtId].merge(Range{start, endIncl});
         } else {
-            virtualRanges[b][virtId] = Range{start, endIncl + 1};
+            virtualRanges[b][virtId] = Range{start, endIncl};
         }
     }
 
-    void markLivePhy(Block* b, long start, long endIncl, x86::X64Register phyId) {
+    void markLivePhy(Block* b, X86Instruction* start, X86Instruction* endIncl, x86::X64Register phyId) {
         if (physicalRanges[b].contains(phyId)) {
-            physicalRanges[b][phyId].add(Range{start, endIncl + 1});
+            physicalRanges[b][phyId].add(Range{start, endIncl});
         } else {
-            physicalRanges[b][phyId].add(Range{start, endIncl + 1});
+            physicalRanges[b][phyId].add(Range{start, endIncl});
         }
     }
 
@@ -620,20 +887,20 @@ struct Graph {
     }
 
 
-    void findDefVirtRec(Block* block, long foundUse, size_t virtId, std::set<Block*>& visited) {
+    void findDefVirtRec(Block* block, X86Instruction* foundUse, size_t virtId, std::set<Block*>& visited) {
         if (visited.contains(block)) return;
         visited.insert(block);
 
-        if (foundUse == -1) foundUse = block->insts.size() - 1;// -1 means last inst in BB
+        if (foundUse == nullptr) foundUse = block->last;
 
         auto foundDef = findDefVirt(block, foundUse, virtId);
-        if (foundDef != -1) {
+        if (foundDef != nullptr) {
             markLiveVirt(block, foundDef, foundUse, virtId);
         } else {
-            markLiveVirt(block, 0, foundUse, virtId);// implicitly mark live range, search in incoming
+            markLiveVirt(block, block->first, foundUse, virtId);// implicitly mark live range, search in incoming
 
             for (auto inc: block->incoming) {
-                findDefVirtRec(inc, -1, virtId, visited);
+                findDefVirtRec(inc, nullptr, virtId, visited);
             }
         }
 
@@ -641,32 +908,32 @@ struct Graph {
     }
 
     void calcLiveRanges() {
+        this->virtualRanges.clear();
+        this->physicalRanges.clear();
         for (auto block: blocks) {
-            for (auto i = 0ul; i < block->insts.size(); i++) {
-                auto inst = block->insts[i];
-
+            for (auto inst : block->iterator()) {
                 for (auto use: inst->uses) {
                     auto v = use->as<Virtual>();
                     if (v == nullptr) continue;
                     std::set<Block*> visited;
-                    findDefVirtRec(block, i, v->id, visited);
+                    findDefVirtRec(block, inst, v->id, visited);
                 }
 
                 for (auto use: inst->uses) {
                     auto v = use->as<Physical>();
                     if (v == nullptr) continue;
-                    auto def = findDefPhy(block, i, v->id);
-                    if (def == -1) {
+                    auto def = findDefPhy(block, inst, v->id);
+                    if (def == nullptr) {
                         PANIC("definition for value {} not found", v->id.toString());
                     }
-                    assert(def != -1);
-                    markLivePhy(block, def, i, v->id);
+                    assert(def != nullptr);
+                    markLivePhy(block, def, inst, v->id);
                 }
 
                 for (auto use: inst->kills) {
                     auto v = use->as<Physical>();
                     if (v == nullptr) continue;
-                    markLivePhy(block, i, i, v->id);
+                    markLivePhy(block, inst, inst, v->id);
                 }
             }
         }
@@ -690,6 +957,36 @@ struct Graph {
         }
 
         return res;
+    }
+
+
+
+    // find all definition / uses of register
+    // insert mem load before each load
+    // insert mem store after each store
+    // replace all ocurances of register with temporaries
+    // FIXME this creates non optimal instructions, some instructions can use MEM+REG operations
+    // we could lose the tmp requiriment and simplify life for reg allocator?
+    // mby create simple pass that can look at the generated instructions and try to merge them?
+    void spill(Virtual* regId) {
+        auto stackSlot = allocStackSlot();
+
+        for (auto block : this->blocks) {
+            for (auto inst : block->iterator()) {
+                if (inst->hasDefVirt(regId->id)) {
+                    auto tmp = allocaVirtReg();
+                    block->insertAfter(inst, new STORESTACK(tmp, stackSlot, 0));
+                    inst->rewriteDef(regId, tmp);
+                }
+                if (inst->hasUseVirt(regId->id)) {
+                    auto tmp = allocaVirtReg();
+                    block->insertBefore(inst, new LOADSTACK(tmp, stackSlot, 0));
+                    inst->rewriteUse(regId, tmp);
+                }
+                assert(!inst->hasDefVirt(regId->id));
+                assert(!inst->hasUseVirt(regId->id));
+            }
+        }
     }
 
     GraphColoring buildAllocatorGraph() {
@@ -726,15 +1023,6 @@ struct Graph {
                 virtToVirt2[physVirtBase+phys.getRawValue()].insert(virt);
             }
         }
-
-        for (auto [a, stuff] : virtToVirt2) {
-            for (auto b : stuff) {
-                if (a == b) continue;
-                println("x{} -- x{}", a, b);
-            }
-        }
-
-
 
         GraphColoring gc = GraphColoring::create(virtToVirt2);
         for (auto [virt, physs] : virtToPhy) {
@@ -778,16 +1066,16 @@ struct Graph {
             e.appendLine("edge[rank=same];");
             e.appendLine();
 
-            for (auto i = 0ul; i < b->insts.size()-1; i++) {
+            for (auto i = 0ul; i < b->size-1; i++) {
                 e.appendLine("b{}i{} -> b{}i{}", id, i, id, i+1);
             }
             e.appendLine();
 
-            for (auto i = 0ul; i < b->insts.size(); i++) {
-                e.appendLine("b{}i{} [shape=rect]", id, i);
+            for (auto inst : b->iterator()) {
+                e.appendLine("b{}i{} [shape=rect]", id, inst->orderId);
                 std::stringstream ss;
-                printBlockInst(b->insts[i], ss);
-                e.appendLine("b{}i{} [label=\"{}\"]", id, i, ss.str());
+                printBlockInst(inst, ss);
+                e.appendLine("b{}i{} [label=\"{}\"]", id, inst->orderId, ss.str());
             }
         });
 
@@ -800,12 +1088,12 @@ struct Graph {
         e.ident([&] {
             e.appendLine("label = \"");
 
-            for (auto i = 0ul; i < b->insts.size(); i++) {
+            for (auto inst : b->iterator()) {
                 std::stringstream ss;
-                printBlockInst(b->insts[i], ss);
-                e.appendLine("<i{}>{}", i, ss.str());
+                printBlockInst(inst, ss);
+                e.appendLine("<i{}>{}", inst->orderId, ss.str());
 
-                if (i+1 != b->insts.size()) e.appendLine("|");
+                if (inst->next != nullptr) e.appendLine("|");
             }
             e.appendLine("\";");
         });
@@ -828,7 +1116,7 @@ struct Graph {
             // block edges
             for (auto src: blocks) {
                 for (auto dst : src->outgoing) {
-                    e.appendLine("b{}:i{} -> b{}:i{};", src->id, src->insts.size()-1, dst->id, 0);
+                    e.appendLine("b{}:i{} -> b{}:i{};", src->id, src->size-1, dst->id, 0);
                 }
             }
 
@@ -837,9 +1125,9 @@ struct Graph {
             for (auto block : blocks) {
                 for (auto [regId, range] : virtualRanges[block]) {
                     e.appendLine("v{} [shape=oval]", regId);
-                    auto color = (block->insts[range.start]->hasDefVirt(regId)) ? "green"sv : "red"sv;
-                    e.appendLine("v{} -> b{}:i{} [color={}];", regId, block->id, range.start, color);
-                    e.appendLine("v{} -> b{}:i{} [color=blue];", regId, block->id, range.end_ex-1);
+                    auto color = (range.first->hasDefVirt(regId)) ? "green"sv : "red"sv;
+                    e.appendLine("v{} -> b{}:i{} [color={}];", regId, block->id, range.first->orderId, color);
+                    e.appendLine("v{} -> b{}:i{} [color=blue];", regId, block->id, range.last->orderId);
                 }
             }
             e.appendLine("}");
@@ -850,7 +1138,7 @@ struct Graph {
                 for (auto [regId, rangeSet] : physicalRanges[block]) {
                     // e.appendLine("{} [shape=oval]", regId.toString());
                     for (auto range : rangeSet.ranges) {
-                        e.appendLine("b{}:i{} -> b{}:i{} [color=purple] [label={}];", block->id, range.start, block->id, range.end_ex-1, regId.toString());
+                        e.appendLine("b{}:i{} -> b{}:i{} [color=purple] [label={}];", block->id, range.first->orderId, block->id, range.last->orderId, regId.toString());
                     }
                 }
             }
@@ -873,15 +1161,15 @@ struct Graph {
             // block edges
             for (auto src: blocks) {
                 for (auto dst : src->outgoing) {
-                    e.appendLine("b{}i{} -> b{}i{};", src->id, src->insts.size()-1, dst->id, 0);
+                    e.appendLine("b{}i{} -> b{}i{};", src->id, src->size-1, dst->id, 0);
                 }
             }
 
             // regs
             for (auto block : blocks) {
                 for (auto [regId, range] : virtualRanges[block]) {
-                    e.appendLine("v{} -> b{}i{} [color=red];", regId, block->id, range.start);
-                    e.appendLine("v{} -> b{}i{} [color=red];", regId, block->id, range.end_ex-1);
+                    e.appendLine("v{} -> b{}i{} [color=red];", regId, block->id, range.first->orderId);
+                    e.appendLine("v{} -> b{}i{} [color=red];", regId, block->id, range.last->orderId);
                 }
             }
         });
@@ -968,14 +1256,14 @@ _ := call [run, hand, args, ret]
 template<typename CTX>
 struct Lower {
     std::map<SSARegisterHandle, size_t> virtRegs;
-    size_t virtCounter = 0;
-    std::map<size_t, size_t> allocas;// stackSlot - size bytes
-    size_t stackCounter = 0;
     std::map<void*, StackSlot> allocaSlots;
+    std::string name;
+    Graph g;
+
 
     StackSlot allocateStack(size_t size, size_t alignment) {
         // FIXME this is retarded
-        return StackSlot{stackCounter++};
+        return g.allocStackSlot();
     }
 
     struct MatchedInstructions {
@@ -1060,17 +1348,17 @@ struct Lower {
             if (saveType != x86::X64Register::SaveType::Callee) continue;
 
             ss[reg] = this->allocateStack(8, 8);
-            g.root->insts.insert(g.root->insts.begin(), new STORESTACK(new Physical(reg), ss[reg], 0));
+            g.root->insertBefore(g.root->first, new STORESTACK(new Physical(reg), ss[reg], 0));
         }
 
         for (auto block : g.blocks) {
-            for (auto i = (long long int)block->insts.size()-1; i >= 0; i--) {
-                if (block->insts[i]->is<RET>()) {
+            for (auto inst : block->iterator()) {
+                if (inst->is<RET>()) {
                     for (auto reg : regs) {
                         auto saveType = x86::sysVSave(reg);
                         if (saveType != x86::X64Register::SaveType::Callee) continue;
 
-                        block->insts.insert(block->insts.begin()+i, new LOADSTACK(new Physical(reg), ss[reg], 0));
+                        block->insertBefore(inst, new LOADSTACK(new Physical(reg), ss[reg], 0));
                     }
                 }
             }
@@ -1117,8 +1405,6 @@ struct Lower {
         PANIC("failed to match inst {}", inst->name);
     }
 
-    Graph g;
-
     std::map<BlockId, Block*> blocks;
     Block* getBlockForId(BlockId id) {
         if (not blocks.contains(id)) {
@@ -1148,16 +1434,14 @@ struct Lower {
 
     Virtual* getReg(SSARegisterHandle hand) {
         if (!virtRegs.contains(hand)) {
-            virtRegs[hand] = virtCounter++;
+            virtRegs[hand] = g.allocVirtId();
         }
 
         return new Virtual{virtRegs[hand]};
     }
 
     Virtual* allocReg() {
-        auto v = virtCounter++;
-
-        return new Virtual{v};
+        return g.allocaVirtReg();
     }
 
     Virtual* getReg(IRInstruction<CTX>* hand) {
@@ -1186,7 +1470,7 @@ struct Lower {
         });
     }
 
-    void emitCall(std::optional<SSARegisterHandle> ret, std::span<IRInstruction<CTX>*> argz, Block* block, size_t id) {
+    void emitCall(std::vector<SSARegisterHandle> ret, std::span<IRInstruction<CTX>*> argz, Block* block, size_t id) {
         std::vector<x86::X64Register> argRegs{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
 
 
@@ -1200,7 +1484,12 @@ struct Lower {
             kills.pop_back();
         }
 
-        if (ret.has_value() && ret->isValid()) {
+        assert(ret.size() <= 2);
+
+        if (ret.size() == 2) {
+            defs.push_back(x86::Rax);
+            defs.push_back(x86::Rdi);
+        } else if (ret.size() == 1) {
             defs.push_back(x86::Rax);
         }
 
@@ -1219,8 +1508,11 @@ struct Lower {
 
         block->push<CALLREG>(defsR, usesR, killsR, callReg);
 
-        if (ret.has_value() && ret->isValid()) {
-            block->push<MOV>(getReg(*ret), new Physical(x86::Rax));
+        if (ret.size() == 2) {
+            block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
+            block->push<MOV>(getReg(ret[1]), new Physical(x86::Rdi));
+        } else if (ret.size() == 1) {
+            block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
         }
     }
 
@@ -1234,19 +1526,13 @@ struct Lower {
     };
 
     void genLiveRanges() {
+        g.print();
         g.calcLiveRanges();
         println("=== X86 GRAPH ===");
         g.print();
         println("=== RANGES ===");
         g.printLiveRange();
         println("=== END X86 GRAPH ===");
-
-        auto gc = g.buildAllocatorGraph();
-        gc.regAlloc(0);
-
-        for (auto [virt, phys] : gc.allocated) {
-            println("x{}[xlabel={}]", virt, phys.toString());
-        }
     }
 
     void lowerIR(ControlFlowGraph<CTX>& cfg) {
@@ -1464,15 +1750,40 @@ struct Lower {
                 makeWildPattern<x86::inst::CallRIP<CTX>>(),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
-                    l.emitCall(inst->target, insts, block, inst->template cst<x86::inst::CallRIP>()->id);
+                    std::vector<SSARegisterHandle> xd;
+                    if (inst->target.isValid()) xd.push_back(inst->target);
+                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id);
+                })
+
+            .makeRewrite(
+                makeWildPattern<x86::inst::CallRIP2<CTX>>(),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
+
+                    auto pepa = inst.inst->template cst<x86::inst::CallRIP2<CTX>>();
+                    l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id);
                 })
 
             .makeRewrite(
                 makeWildPattern<instructions::BitExtract<CTX>>(),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
-                    l.emitCall(inst->target, insts, block, inst->template cst<x86::inst::CallRIP>()->id);
-                });
+                    TODO()
+                })
+
+            .makeRewrite(
+                makeWildPattern<instructions::Builtin<CTX>>(),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    if (inst->template cst<instructions::Builtin>()->type == "trap") {
+                        block->push<INT3>();
+                    } else {
+                        TODO()
+                    }
+                })
+
+        .makeRewrite(
+            makeWildPattern<instructions::Dummy<CTX>>(),
+            [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+            });
 
         matchCFG(cfg, rewrites.rules);
     }

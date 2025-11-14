@@ -15,6 +15,7 @@ struct ControlFlowGraph {
     ControlFlowGraph() = default;
 
     void print() {
+        println("CFG dump for {}", tag);
         this->printRegisters();
         for (auto& block : this->validNodes()) {
             const auto & instructions = block->getInstructions();
@@ -866,8 +867,8 @@ struct ControlFlowGraph {
         return hand;
     }
 
-    SSARegisterHandle allocateDummy() {
-        return pushRegister(std::make_unique<typename CTX::REG>(CTX::REG::makeDummy()));
+    SSARegisterHandle allocateDummy(size_t size = 8) {
+        return pushRegister(std::make_unique<typename CTX::REG>(CTX::REG::makeDummy(size)));
     }
 
     span<CopyPtr<typename CTX::REG>> getRegisters() {
@@ -1113,6 +1114,7 @@ struct ControlFlowGraph {
         return naughty;
     }
 
+    std::string tag;
 private:
     std::map<BlockId, CopyPtr<BaseBlock>> nodes;
     vector<CopyPtr<typename CTX::REG>> registers{};

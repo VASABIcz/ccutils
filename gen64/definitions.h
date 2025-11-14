@@ -205,6 +205,7 @@ inline X64Register fromRawWithExt(uint8_t encoded, bool isExt) {
 }
 
 inline X64Register fromRaw(uint8_t encoded) {
+    assert(encoded <= 15);
     return (X64RegisterType)encoded;
 }
 

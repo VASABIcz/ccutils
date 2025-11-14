@@ -88,7 +88,7 @@ struct EmitCtx {
     void emit() {
         for (auto& b : g.blocks) {
             blockOffs[b] = mc.getOffset();
-            for (auto& inst : b->insts) {
+            for (auto inst : b->iterator()) {
                 auto didDispatch = dispatch(inst,
                 CASE_VAL(MOV*) {
                     mc.movReg(getReg(it->defs[0]), getReg(it->uses[0]));
@@ -159,6 +159,9 @@ struct EmitCtx {
                 },
                 CASE_VAL(MUL*) {
                     mc.writeRegInst(SusX64Instruction::imul, getReg(it->defs[0]), getReg(it->uses[1]));
+                },
+                CASE_VAL(INT3*) {
+                    mc.trap();
                 },
                 CASE_VAL(SETZ*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::Equal);

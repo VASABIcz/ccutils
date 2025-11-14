@@ -603,26 +603,6 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct AddressOf: public NamedIrInstruction<"address_of", CTX> {
-        PUB_VIRTUAL_COPY(AddressOf)
-        SSARegisterHandle obj;
-
-        AddressOf(SSARegisterHandle target, SSARegisterHandle obj): NamedIrInstruction<"address_of", CTX>(target), obj(obj) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            fn(obj);
-        }
-
-        void print(CTX::IRGEN&, std::ostream& stream) override {
-            this->basePrint(stream, "{}", obj);
-        }
-
-        void generate(CTX::GEN& gen) override {
-            gen.assembler.addressOf(gen.getReg(this->target), gen.getReg(obj));
-        }
-    };
-
-    template<typename CTX>
     struct Arg: public NamedIrInstruction<"arg", CTX> {
         PUB_VIRTUAL_COPY(Arg)
 
@@ -713,26 +693,6 @@ namespace instructions {
         }
     };
 
-    /// stack allocation - allocate nB sized value
-    template<typename CTX>
-    struct Alloca: public NamedIrInstruction<"alloca", CTX> {
-        PUB_VIRTUAL_COPY(Alloca)
-        size_t size;
-
-        Alloca(SSARegisterHandle target, size_t size): NamedIrInstruction<"alloca", CTX>(target), size(size) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-        }
-
-        void print(CTX::IRGEN&, std::ostream& stream) override {
-            this->basePrint(stream, "{}", size);
-        }
-
-        void generate(CTX::GEN& gen) override {
-            // handled by CodeGen
-        }
-    };
-
     /// stack allocation - allocate **Pointer** to nB sized memory location
     template<typename CTX>
     struct AllocaPtr: public NamedIrInstruction<"alloca_ptr", CTX> {
@@ -795,6 +755,66 @@ namespace instructions {
         }
     };
 
+    template<typename CTX>
+    struct Dummy: public NamedIrInstruction<"dummy", CTX> {
+        PUB_VIRTUAL_COPY(Dummy)
+
+        Dummy(SSARegisterHandle target): NamedIrInstruction<"dummy", CTX>(target) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+        }
+
+        void print(CTX::IRGEN&, std::ostream& stream) override {
+            this->basePrint(stream, "");
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct Builtin: public NamedIrInstruction<"builtin", CTX> {
+        PUB_VIRTUAL_COPY(Builtin)
+        std::string type;
+
+        Builtin(std::string type): NamedIrInstruction<"builtin", CTX>(SSARegisterHandle::invalid()), type(type) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+        }
+
+        void print(CTX::IRGEN&, std::ostream& stream) override {
+            this->basePrint(stream, "{}", type);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct COW: public NamedIrInstruction<"cow", CTX> {
+        PUB_VIRTUAL_COPY(COW)
+
+        SSARegisterHandle src;
+        SSARegisterHandle sub;
+        long offset;
+
+        COW(SSARegisterHandle target, SSARegisterHandle sub, SSARegisterHandle src, long offset): NamedIrInstruction<"cow", CTX>(target), src(src), sub(sub), offset(offset) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            fn(src);
+            fn(sub);
+        }
+
+        void print(CTX::IRGEN&, std::ostream& stream) override {
+            this->basePrint(stream, "{} | {} << {}", sub, src, offset);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
 }
 
 /*

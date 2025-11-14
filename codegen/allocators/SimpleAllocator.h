@@ -105,11 +105,6 @@ struct SimpleAlloc: Allocator<CTX> {
             if (regs.contains(reg) || !currentLiveRanges.isAlive(reg, currentInstructionCounter)) continue;
 
             // handle allocating of alloca instructions
-            auto alloca = instruction.template cst<instructions::Alloca>();
-            if (alloca != nullptr && alloca->target == reg) {
-                doAlloca(alloca->target, alloca->size);
-                continue;
-            }
             auto alloca1 = instruction.template cst<instructions::AllocaPtr>();
             if (alloca1 != nullptr && alloca1->target == reg) {
                 auto tmp = assembler->allocateStack(alloca1->size);
