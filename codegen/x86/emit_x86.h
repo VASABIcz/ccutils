@@ -41,6 +41,7 @@ struct EmitCtx {
     // outs
     std::map<size_t, std::vector<ImmSpace>> symbols;
     std::map<size_t, std::vector<std::pair<ImmSpace, long>>> stackSlots;
+    std::map<size_t, size_t> stackOffsets;
     std::map<Block*, std::vector<ImmSpace>> jumps;
     std::map<Block*, size_t > blockOffs;
 
@@ -76,12 +77,10 @@ struct EmitCtx {
     }
 
     void patchStack() {
-        size_t i = 0;
         for (auto stack : stackSlots) {
             for (auto [slot, adend] : stack.second) {
-                mc.patchRaw(slot, i*8+8+adend);
+                mc.patchRaw(slot, stackOffsets[stack.first]+8+adend);
             }
-            i += 1;
         }
     }
 
@@ -128,6 +127,9 @@ struct EmitCtx {
                 CASE_VAL(CMP*) {
                     mc.writeRegInst(X64Instruction::cmp, getReg(it->uses[0]), getReg(it->uses[1]));
                 },
+                CASE_VAL(TEST*) {
+                    mc.writeRegInst(X64Instruction::test, getReg(it->uses[0]), getReg(it->uses[1]));
+                },
                 CASE_VAL(SETLE*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
                 },
@@ -167,10 +169,13 @@ struct EmitCtx {
                     mc.setCC(getReg(it->defs[0]), CmpType::Equal);
                     mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
                 },
-                                            CASE_VAL(SETLS*) {
-                                                mc.setCC(getReg(it->defs[0]), CmpType::Less);
-                                                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
-                                            },
+                CASE_VAL(SETLS*) {
+                    mc.setCC(getReg(it->defs[0]), CmpType::Less);
+                    mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                },
+                CASE_VAL(XOR*) {
+                    mc.writeRegInst(X64Instruction::xorI, getReg(it->defs[0]), getReg(it->uses[1]));
+                },
                 CASE_VAL(FAKE_DEF*) {}
                 );
                 if (not didDispatch) PANIC("DID NOT MATCH {}", inst->className());

@@ -201,6 +201,15 @@ struct ADD : X86Instruction {
     }
 };
 
+struct XOR : X86Instruction {
+    DEBUG_INFO2(XOR)
+    XOR(BaseRegister* lhs, BaseRegister* rhs) {
+        this->defs.push_back(lhs);
+        this->uses.push_back(lhs);
+        this->uses.push_back(rhs);
+    }
+};
+
 struct ADDIMM : X86Instruction {
     DEBUG_INFO2(ADDIMM)
 
@@ -238,6 +247,15 @@ struct CMP : X86Instruction {
         this->uses.push_back(rhs);
     }
 };
+
+struct TEST : X86Instruction {
+    DEBUG_INFO2(TEST)
+    TEST(BaseRegister* lhs, BaseRegister* rhs) {
+        this->uses.push_back(lhs);
+        this->uses.push_back(rhs);
+    }
+};
+
 
 struct SETZ : X86Instruction {
     DEBUG_INFO2(SETZ)
@@ -301,7 +319,7 @@ struct STOREMEM : X86Instruction {
 };
 
 struct StackSlot {
-    size_t id;
+    size_t id = 999'999;
 };
 
 struct STORESTACK : X86Instruction {
@@ -730,7 +748,27 @@ struct Graph {
     Block* root = nullptr;
 
     size_t virtCounter = 0;
-    size_t stackCounter = 0;
+    std::vector<size_t> stackSizes;
+
+    size_t totalStackSize() const {
+        size_t acu = 0;
+        for (auto size : stackSizes) {
+            acu += size;
+        }
+
+        return acu;
+    }
+
+    std::map<size_t, size_t> stackOffsets() const {
+        std::map<size_t, size_t> offsets;
+        size_t acu = 0;
+        for (auto [i, size] : stackSizes | views::enumerate) {
+            offsets[i] = acu;
+            acu += size;
+        }
+
+        return offsets;
+    }
 
     // live ranges
     std::map<Block*, std::map<size_t, Range>> virtualRanges;
@@ -771,12 +809,13 @@ struct Graph {
         return new Virtual{allocVirtId()};
     }
 
-    size_t allocStack() {
-        return stackCounter++;
+    size_t allocStack(size_t size, size_t alignment) {
+        stackSizes.push_back(size);
+        return stackSizes.size()-1;
     }
 
-    StackSlot allocStackSlot() {
-        return StackSlot{allocStack()};
+    StackSlot allocStackSlot(size_t size, size_t alignment) {
+        return StackSlot{allocStack(size, alignment)};
     }
 
     void prune() {
@@ -966,10 +1005,10 @@ struct Graph {
     // insert mem store after each store
     // replace all ocurances of register with temporaries
     // FIXME this creates non optimal instructions, some instructions can use MEM+REG operations
-    // we could lose the tmp requiriment and simplify life for reg allocator?
+    // we could loose the tmp requiriment and simplify life for reg allocator?
     // mby create simple pass that can look at the generated instructions and try to merge them?
     void spill(Virtual* regId) {
-        auto stackSlot = allocStackSlot();
+        auto stackSlot = allocStackSlot(8,8);
 
         for (auto block : this->blocks) {
             for (auto inst : block->iterator()) {
@@ -1263,7 +1302,7 @@ struct Lower {
 
     StackSlot allocateStack(size_t size, size_t alignment) {
         // FIXME this is retarded
-        return g.allocStackSlot();
+        return g.allocStackSlot(size, alignment);
     }
 
     struct MatchedInstructions {
@@ -1762,6 +1801,14 @@ struct Lower {
 
                     auto pepa = inst.inst->template cst<x86::inst::CallRIP2<CTX>>();
                     l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id);
+                })
+
+            .makeRewrite(
+                makePattern<instructions::BoolNot>(WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<XOR>(getReg(*inst), getReg(*inst));
+                    block->push<TEST>(getReg(*inst[0]), getReg(*inst[0]));
+                    block->push<SETZ>(getReg(*inst));
                 })
 
             .makeRewrite(

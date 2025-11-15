@@ -27,7 +27,8 @@ enum class X64Instruction: u8 {
     Call = 0xFF,
     inc = 0xFF,
     lea = 0x8D,
-    dec = 0xFF
+    dec = 0xFF,
+    test = 0x85
 };
 
 // FIXME swapped endianness
