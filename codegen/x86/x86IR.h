@@ -114,6 +114,13 @@ struct FAKE_DEF : X86Instruction {
     }
 };
 
+struct FAKE_USE : X86Instruction {
+    DEBUG_INFO2(FAKE_USE)
+    FAKE_USE(BaseRegister* def) {
+        this->uses.push_back(def);
+    }
+};
+
 struct CALLRIP : X86Instruction {
     DEBUG_INFO2(CALLRIP)
     CALLRIP(std::initializer_list<BaseRegister*> defs, std::initializer_list<BaseRegister*> uses, std::initializer_list<BaseRegister*> kills, size_t id) {
@@ -256,10 +263,39 @@ struct TEST : X86Instruction {
     }
 };
 
+struct CQO : X86Instruction {
+    DEBUG_INFO2(CQO)
+    CQO() {
+        this->uses.push_back(new Physical(x86::Rax));
+
+        this->defs.push_back(new Physical(x86::Rdx));
+        this->defs.push_back(new Physical(x86::Rax));
+    }
+};
+
+struct IDIV : X86Instruction {
+    DEBUG_INFO2(IDIV)
+    IDIV(BaseRegister* reg) {
+        this->uses.push_back(reg);
+
+        this->uses.push_back(new Physical(x86::Rdx));
+        this->uses.push_back(new Physical(x86::Rax));
+
+        this->defs.push_back(new Physical(x86::Rdx));
+        this->defs.push_back(new Physical(x86::Rax));
+    }
+};
 
 struct SETZ : X86Instruction {
     DEBUG_INFO2(SETZ)
     SETZ(BaseRegister* dst) {
+        this->defs.push_back(dst);
+    }
+};
+
+struct SETNZ : X86Instruction {
+    DEBUG_INFO2(SETNZ)
+    SETNZ(BaseRegister* dst) {
         this->defs.push_back(dst);
     }
 };
@@ -1742,6 +1778,13 @@ struct Lower {
                 })
 
             .makeRewrite(
+                makeBin<OP::NEQ, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETNZ>(getReg(*inst));
+                })
+
+            .makeRewrite(
                 makeBin<OP::LE, TYP::I64>(WILD, WILD),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
@@ -1783,6 +1826,24 @@ struct Lower {
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETLS>(getReg(*inst));
+                })
+            .makeRewrite(
+                makeBin<OP::DIV, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
+                    block->push<CQO>();
+                    block->push<IDIV>(getReg(*inst[1]));
+                    block->push<FAKE_USE>(new Physical(x86::Rdx));
+                    block->push<MOV>(getReg(*inst), new Physical(x86::Rax));
+                })
+            .makeRewrite(
+                makeBin<OP::MOD, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
+                    block->push<CQO>();
+                    block->push<IDIV>(getReg(*inst[1]));
+                    block->push<FAKE_USE>(new Physical(x86::Rax));
+                    block->push<MOV>(getReg(*inst), new Physical(x86::Rdx));
                 })
 
             .makeRewrite(

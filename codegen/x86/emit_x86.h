@@ -176,7 +176,17 @@ struct EmitCtx {
                 CASE_VAL(XOR*) {
                     mc.writeRegInst(X64Instruction::xorI, getReg(it->defs[0]), getReg(it->uses[1]));
                 },
-                CASE_VAL(FAKE_DEF*) {}
+                CASE_VAL(CQO*) {
+                    mc.cqo();
+                },
+                CASE_VAL(SETNZ*) {
+                    mc.setCC(getReg(it->defs[0]), CmpType::NotEqual);
+                },
+                CASE_VAL(IDIV*) {
+                    mc.signedDivide(getReg(it->uses[0]));
+                },
+                CASE_VAL(FAKE_DEF*) {},
+                CASE_VAL(FAKE_USE*) {}
                 );
                 if (not didDispatch) PANIC("DID NOT MATCH {}", inst->className());
             }
