@@ -13,7 +13,7 @@ namespace x86::inst {
         CallRIP(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call", CTX>(target), argz(std::move(argz)), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            for (auto arg : argz) fn(arg);
+            for (auto& arg : argz) fn(arg);
         }
 
         void generate(CTX::GEN& gen) override {}
@@ -33,7 +33,7 @@ namespace x86::inst {
         CallRIP2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid()), argz(std::move(argz)), results(target), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            for (auto arg : argz) fn(arg);
+            for (auto& arg : argz) fn(arg);
         }
 
         void generate(CTX::GEN& gen) override {}

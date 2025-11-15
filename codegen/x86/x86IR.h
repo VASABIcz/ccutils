@@ -6,6 +6,7 @@
 #include "utils/utils.h"
 #include "x86_insts.h"
 #include "gen64/definitions.h"
+#include <chrono>
 
 struct BaseRegister {
     virtual ~BaseRegister() = default;
@@ -217,6 +218,24 @@ struct XOR : X86Instruction {
     }
 };
 
+struct AND : X86Instruction {
+    DEBUG_INFO2(AND)
+    AND(BaseRegister* lhs, BaseRegister* rhs) {
+        this->defs.push_back(lhs);
+        this->uses.push_back(lhs);
+        this->uses.push_back(rhs);
+    }
+};
+
+struct OR: X86Instruction {
+    DEBUG_INFO2(OR)
+    OR(BaseRegister* lhs, BaseRegister* rhs) {
+        this->defs.push_back(lhs);
+        this->uses.push_back(lhs);
+        this->uses.push_back(rhs);
+    }
+};
+
 struct ADDIMM : X86Instruction {
     DEBUG_INFO2(ADDIMM)
 
@@ -286,6 +305,39 @@ struct IDIV : X86Instruction {
     }
 };
 
+struct SHL : X86Instruction {
+    DEBUG_INFO2(SHL)
+    SHL(BaseRegister* reg) {
+        this->uses.push_back(reg);
+
+        this->uses.push_back(new Physical(x86::Rcx));
+
+        this->defs.push_back(reg);
+    }
+};
+
+struct SHR : X86Instruction {
+    DEBUG_INFO2(SHR)
+    SHR(BaseRegister* reg) {
+        this->uses.push_back(reg);
+
+        this->uses.push_back(new Physical(x86::Rcx));
+
+        this->defs.push_back(reg);
+    }
+};
+
+struct ASR : X86Instruction {
+    DEBUG_INFO2(ASR)
+    ASR(BaseRegister* reg) {
+        this->uses.push_back(reg);
+
+        this->uses.push_back(new Physical(x86::Rcx));
+
+        this->defs.push_back(reg);
+    }
+};
+
 struct SETZ : X86Instruction {
     DEBUG_INFO2(SETZ)
     SETZ(BaseRegister* dst) {
@@ -310,6 +362,20 @@ struct SETLE : X86Instruction {
 struct SETLS: X86Instruction {
     DEBUG_INFO2(SETLS)
     SETLS(BaseRegister* dst) {
+        this->defs.push_back(dst);
+    }
+};
+
+struct SETGT: X86Instruction {
+    DEBUG_INFO2(SETGT)
+    SETGT(BaseRegister* dst) {
+        this->defs.push_back(dst);
+    }
+};
+
+struct SETGE: X86Instruction {
+    DEBUG_INFO2(SETGE)
+    SETGE(BaseRegister* dst) {
         this->defs.push_back(dst);
     }
 };
@@ -1071,12 +1137,13 @@ struct Graph {
         std::map<size_t, std::set<size_t>> virtToVirt;
         std::map<size_t, std::set<x86::X64Register>> virtToPhy;
 
-        for (auto self : virtIds) {
-            for (auto other : virtIds) {
-                auto ints = virtVirtInt(self, other);
-                if (ints) {
-                    virtToVirt[self].insert(other);
-                    virtToVirt[other].insert(self);
+        for (auto block: blocks) {
+            for (auto rangeA : virtualRanges[block]) {
+                for (auto rangeB : virtualRanges[block]) {
+                    if (rangeA.second.intersects(rangeB.second)) {
+                        virtToVirt[rangeB.first].insert(rangeA.first);
+                        virtToVirt[rangeA.first].insert(rangeB.first);
+                    }
                 }
             }
         }
@@ -1508,6 +1575,7 @@ struct Lower {
     }
 
     Virtual* getReg(SSARegisterHandle hand) {
+        assert(hand.isValid());
         if (!virtRegs.contains(hand)) {
             virtRegs[hand] = g.allocVirtId();
         }
@@ -1636,7 +1704,7 @@ struct Lower {
             .makeRewrite(
                 makePattern<instructions::Branch>(WILD),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<CMPIMM>(l.getReg(*inst), 1);
+                    block->push<CMPIMM>(l.getReg(*inst[0]), 1);
                     block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
                 })
@@ -1790,6 +1858,12 @@ struct Lower {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETLE>(getReg(*inst));
                 })
+            .makeRewrite(
+                makeBin<OP::GE, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETGE>(getReg(*inst));
+                })
 
             .makeRewrite(
                 makePattern<x86::inst::MovRip>(),
@@ -1826,6 +1900,50 @@ struct Lower {
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETLS>(getReg(*inst));
+                })
+            .makeRewrite(
+                makeBin<OP::GT, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETGT>(getReg(*inst));
+                })
+            .makeRewrite(
+                makeBin<OP::LE, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETLE>(getReg(*inst));
+                })
+            .makeRewrite(
+                makeBin<OP::AND, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(getReg(*inst), getReg(*inst[0]));
+                    block->push<AND>(getReg(*inst), getReg(*inst[1]));
+                })
+            .makeRewrite(
+                makeBin<OP::OR, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(getReg(*inst), getReg(*inst[0]));
+                    block->push<OR>(getReg(*inst), getReg(*inst[1]));
+                })
+            .makeRewrite(
+                makeBin<OP::XOR, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(getReg(*inst), getReg(*inst[0]));
+                    block->push<XOR>(getReg(*inst), getReg(*inst[1]));
+                })
+            .makeRewrite(
+                makeBin<OP::SHL, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(getReg(*inst), getReg(*inst[0]));
+                    block->push<MOV>(new Physical(x86::Rcx), getReg(*inst[1]));
+                    block->push<SHL>(getReg(*inst));
+                })
+            .makeRewrite(
+                makeBin<OP::SHR, TYP::I64>(WILD, WILD),
+                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                    block->push<MOV>(getReg(*inst), getReg(*inst[0]));
+                    block->push<MOV>(new Physical(x86::Rcx), getReg(*inst[1]));
+                    block->push<ASR>(getReg(*inst));
                 })
             .makeRewrite(
                 makeBin<OP::DIV, TYP::I64>(WILD, WILD),

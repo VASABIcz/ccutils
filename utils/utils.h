@@ -12,10 +12,11 @@
 #include <functional>
 #include <ranges>
 #include <utility>
+#include <chrono>
+#include <cmath>
 
 #include "stringify.h"
 #include "Debuggable.h"
-#include <cmath>
 
 template<typename ...Args>
 void consume(Args... argz) {
@@ -730,6 +731,19 @@ constexpr string safeSymbol(string_view in) {
     }
     return out;
 }
+
+class Profile {
+public:
+    void trace(const std::string &msg) {
+        auto now = std::chrono::steady_clock::now();
+        long long diff_us = 0;
+        diff_us = std::chrono::duration_cast<std::chrono::microseconds>(now - prev_).count();
+        prev_ = now;
+        std::cout << msg << " +" << diff_us << "us\n";
+    }
+private:
+    std::chrono::steady_clock::time_point prev_ = std::chrono::steady_clock::now();
+};
 
 inline std::string to_lower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);

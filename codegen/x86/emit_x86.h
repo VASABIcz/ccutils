@@ -130,9 +130,6 @@ struct EmitCtx {
                 CASE_VAL(TEST*) {
                     mc.writeRegInst(X64Instruction::test, getReg(it->uses[0]), getReg(it->uses[1]));
                 },
-                CASE_VAL(SETLE*) {
-                    mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
-                },
                 CASE_VAL(CALLREG*) {
                     mc.call(getReg(it->reg));
                 },
@@ -169,9 +166,22 @@ struct EmitCtx {
                     mc.setCC(getReg(it->defs[0]), CmpType::Equal);
                     mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
                 },
+                CASE_VAL(SETNZ*) {
+                    mc.setCC(getReg(it->defs[0]), CmpType::NotEqual);
+                },
+                CASE_VAL(SETGT*) {
+                    mc.setCC(getReg(it->defs[0]), CmpType::Greater);
+                    mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                },
+                CASE_VAL(SETGE*) {
+                    mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
+                },
                 CASE_VAL(SETLS*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::Less);
                     mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                },
+                CASE_VAL(SETLE*) {
+                    mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
                 },
                 CASE_VAL(XOR*) {
                     mc.writeRegInst(X64Instruction::xorI, getReg(it->defs[0]), getReg(it->uses[1]));
@@ -179,11 +189,26 @@ struct EmitCtx {
                 CASE_VAL(CQO*) {
                     mc.cqo();
                 },
-                CASE_VAL(SETNZ*) {
-                    mc.setCC(getReg(it->defs[0]), CmpType::NotEqual);
+                CASE_VAL(IDIV*) {
+                    mc.signedDivide(getReg(it->uses[0]));
                 },
                 CASE_VAL(IDIV*) {
                     mc.signedDivide(getReg(it->uses[0]));
+                },
+                CASE_VAL(AND*) {
+                    mc.writeRegInst(X64Instruction::And, getReg(it->defs[0]), getReg(it->uses[1]));
+                },
+                CASE_VAL(OR*) {
+                    mc.writeRegInst(X64Instruction::Or, getReg(it->defs[0]), getReg(it->uses[1]));
+                },
+                CASE_VAL(ASR*) {
+                    mc.shiftRightByCl(getReg(it->defs[0]));
+                },
+                CASE_VAL(SHR*) {
+                    TODO()
+                },
+                CASE_VAL(SHL*) {
+                    mc.shiftLeftByCl(getReg(it->defs[0]));
                 },
                 CASE_VAL(FAKE_DEF*) {},
                 CASE_VAL(FAKE_USE*) {}
