@@ -18,7 +18,7 @@ namespace x86::inst {
 
         void generate(CTX::GEN& gen) override {}
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", argz);
         }
     };
@@ -38,7 +38,7 @@ namespace x86::inst {
 
         void generate(CTX::GEN& gen) override {}
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{} <== {}", results, argz);
         }
     };
@@ -55,7 +55,7 @@ namespace x86::inst {
 
         void generate(CTX::GEN& gen) override {}
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", id);
         }
     };
@@ -71,7 +71,7 @@ namespace x86::inst {
 
         void generate(CTX::GEN& gen) override {}
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", id);
         }
     };

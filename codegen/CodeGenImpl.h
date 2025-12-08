@@ -16,7 +16,7 @@ template<typename CTX>
 void CodeGen<CTX>::doDumpGraphPNG() {
     string buf = "digraph {\n";
     for (const auto& node : irGen.graph.validNodesConst()) {
-        auto text = node->toString(irGen);
+        auto text = node->toString();
         buf += stringify("{} [label=\\\"{}\\\"] [shape=box] [xlabel=\\\"{}\\\"]\n", node->blockId, text, node->tag);
         bool pepa = true;
         for (auto tgt : node->getTargets()) {
@@ -204,7 +204,7 @@ void CodeGen<CTX>::beforeInstruction(IRInstruction* instruction) {
     this->assembler.nop();
     assembler.instructionNumberHint(currentInstructionCounter);
     std::stringstream ss;
-    instruction->print(irGen, ss);
+    instruction->print(ss);
     assembler.bindHint(ss.str());
 }
 template<typename CTX>
@@ -243,7 +243,7 @@ void CodeGen<CTX>::doPrintLinearized() {
         for (const auto& inst : irGen.getBlock(blockId).instructions) {
             auto ajd = to_string(id);
             cout << ajd << string(max_value_len-ajd.size(), ' ') << " | ";
-            inst->print(irGen);
+            inst->print();
             id++;
         }
     }

@@ -90,7 +90,7 @@ namespace instructions {
     template<typename CTX>
     struct PhiFunction: public NamedIrInstruction<"phi", CTX> {
     PUB_VIRTUAL_COPY(PhiFunction)
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", stringify(versions, {{", ", "", ""}}));
         }
 
@@ -194,7 +194,7 @@ namespace instructions {
             fn(condition);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
@@ -246,7 +246,7 @@ namespace instructions {
             fn(rhs);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{} {} {} ? @{} : @{}", lhs.toString(), toString1(type), rhs.toString(), scopeT, scopeF);
         }
 
@@ -307,7 +307,7 @@ namespace instructions {
             fn(condition);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
@@ -359,7 +359,7 @@ namespace instructions {
             fn(condition);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
@@ -431,7 +431,7 @@ namespace instructions {
             fn(lhs);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, " {} {} {} ? @{} : @{}", lhs, toString1(type), rhs, scopeT, scopeF);
         }
 
@@ -506,7 +506,7 @@ namespace instructions {
             TODO()
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", parts);
         }
 
@@ -531,7 +531,7 @@ namespace instructions {
                 gen.assembler.movUnsigned(res, value);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", isSigned ? stringify(std::bit_cast<intmax_t>(value)) : stringify(value));
         }
     };
@@ -610,7 +610,7 @@ namespace instructions {
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "");
         }
 
@@ -632,7 +632,7 @@ namespace instructions {
             fn(value);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}+{} <- {}", ptr, offset, value);
         }
 
@@ -657,7 +657,7 @@ namespace instructions {
             fn(ptr);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}+{}", ptr, offset);
         }
 
@@ -681,7 +681,7 @@ namespace instructions {
             fn(subject);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", subject);
         }
 
@@ -704,7 +704,7 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", size);
         }
 
@@ -726,7 +726,7 @@ namespace instructions {
             fn(subject);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}[{}..<{}]", subject, offset, offset+size);
         }
 
@@ -746,7 +746,7 @@ namespace instructions {
             for (auto& input : inputs) fn(input);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", inputs);
         }
 
@@ -764,7 +764,7 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "");
         }
 
@@ -783,7 +783,7 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", type);
         }
 
@@ -807,7 +807,7 @@ namespace instructions {
             fn(sub);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{} | {} << {}", sub, src, offset);
         }
 

@@ -30,8 +30,6 @@ struct ControlFlowGraph {
     typedef CodeBlock<CTX> BaseBlock;
     typedef unordered_map<size_t, unordered_set<size_t>> DependencyMap;
 
-    ControlFlowGraph() = default;
-
     void print() {
         println("CFG dump for {}", tag);
         this->printRegisters();
@@ -43,7 +41,7 @@ struct ControlFlowGraph {
             }
             for (auto& instruction : instructions) {
                 cout << "  ";
-                instruction->print(*static_cast<CTX::IRGEN*>(nullptr));
+                instruction->print();
             }
         }
     }
@@ -303,9 +301,15 @@ struct ControlFlowGraph {
         return BlockId::raw(blockIdCounter++);
     }
 
+    CTX::CFG& self() {
+        return static_cast<CTX::CFG&>(*this);
+    }
+
     BaseBlock& createBlock(string tag) {
         auto id = allocBlockId();
-        return *(nodes.emplace(id, make_unique<BaseBlock>(std::move(tag), id)).first->second);
+        auto block = make_unique<BaseBlock>(std::move(tag), id);
+        block->cfg = &self();
+        return *(nodes.emplace(id, std::move(block)).first->second);
     }
 
     void printRegisters() {
@@ -1161,5 +1165,5 @@ struct ControlFlowGraph {
     std::string tag;
 private:
     std::map<BlockId, CopyPtr<BaseBlock>> nodes;
-    vector<CopyPtr<typename CTX::REG>> registers{};
+    vector<CopyPtr<typename CTX::REG>> registers;
 };

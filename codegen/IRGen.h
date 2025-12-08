@@ -59,7 +59,7 @@ public:
             }
             for (auto& instruction : instructions) {
                 cout << "  ";
-                instruction->print(*static_cast<CTX::IRGEN*>(this));
+                instruction->print();
             }
         }
     }

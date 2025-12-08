@@ -44,6 +44,7 @@ public:
         assert(isEmpty() || !getInstruction(-1)->isTerminal());
         auto instruction = createInstruction<T>(std::forward<Args>(args)...);
         auto ptr = instruction.get();
+        ptr->codeBlock = this;
         push(std::move(instruction));
 
         return ptr;
@@ -279,8 +280,13 @@ public:
         return make_unique<T>(std::forward<Args>(args)...);
     }
 
+    CTX::CFG* getCFG() {
+        return cfg;
+    }
+
     bool mIsLoopHeader = false;
     string tag;
     BlockId blockId;
     vector<CopyPtr<IRInstruction<CTX>>> instructions{};
+    CTX::CFG* cfg = nullptr;
 };

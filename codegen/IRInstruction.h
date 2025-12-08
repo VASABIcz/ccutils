@@ -12,6 +12,7 @@ template<typename CTX>
 struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     SSARegisterHandle target;
     string name;
+    CodeBlock<CTX>* codeBlock = nullptr;
 
     typedef CodeBlock<CTX> BaseGen;
 
@@ -19,8 +20,8 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
 
     IRInstruction(SSARegisterHandle target, string name): target(target), name(std::move(name)) {}
 
-    virtual void print(CTX::IRGEN& gen) {
-        print(gen, std::cout);
+    virtual void print() {
+        print(std::cout);
         std::cout << std::endl;
     }
 
@@ -30,7 +31,15 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         return {target};
     }
 
-    virtual void print(CTX::IRGEN& gen, std::ostream& stream) = 0;
+    CodeBlock<CTX>* getBB() {
+        return codeBlock;
+    }
+
+    CTX::CFG* getCFG() {
+        return getBB()->getCFG();
+    }
+
+    virtual void print(std::ostream& stream) = 0;
 
     virtual void generate(CTX::GEN& gen) = 0;
 
@@ -92,7 +101,7 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
 
     std::string toString(CTX::IRGEN& gen) {
         std::stringstream stream;
-        this->print(gen, stream);
+        this->print(stream);
 
         return stream.str();
     }
@@ -176,7 +185,7 @@ struct IR2Instruction2: public IRInstruction<CTX> {
         fn(rhs);
     }
 
-    void print(CTX::IRGEN &gen, std::ostream& stream) override {
+    void print(std::ostream& stream) override {
         this->basePrint(stream, "{}, {}", lhs.toString(), rhs.toString());
     }
 
@@ -195,7 +204,7 @@ struct IR1Instruction: public IRInstruction<CTX> {
         fn(value);
     }
 
-    void print(CTX::IRGEN &gen, std::ostream& stream) override {
+    void print(std::ostream& stream) override {
         this->basePrint(stream, "{}", value.toString());
     }
 };
@@ -206,7 +215,7 @@ struct IR0Instruction: public IRInstruction<CTX> {
 
     void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
-    void print(CTX::IRGEN &gen, std::ostream& stream) override {
+    void print(std::ostream& stream) override {
         this->basePrint(stream, "");
     }
 };
@@ -222,7 +231,7 @@ struct IRBaseInstruction: public NamedIrInstruction<V, CTX> {
 
     void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
-    void print(CTX::IRGEN& gen, std::ostream& stream) override {
+    void print(std::ostream& stream) override {
         this->basePrint(stream, "{}", stringify(value));
     }
 
