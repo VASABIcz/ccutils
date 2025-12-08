@@ -7,6 +7,7 @@
 #include "x86_insts.h"
 #include "gen64/definitions.h"
 #include <chrono>
+#include "utils/Logger.h"
 
 struct BaseRegister {
     virtual ~BaseRegister() = default;
@@ -715,6 +716,11 @@ struct GraphColoring {
     std::map<size_t, std::set<size_t>> interference;
     size_t regCount = 16;
     size_t regCounter = 0;
+    std::shared_ptr<Logger> logger;
+
+    GraphColoring(std::shared_ptr<Logger> logger): logger(logger) {
+
+    }
 
     size_t interferenceCount(size_t reg) {
         return this->interference[reg].size();
@@ -736,8 +742,8 @@ struct GraphColoring {
         return worst;
     }
 
-    static GraphColoring create(std::map<size_t, std::set<size_t>> interf) {
-        GraphColoring self;
+    static GraphColoring create(std::shared_ptr<Logger> logger, std::map<size_t, std::set<size_t>> interf) {
+        GraphColoring self{logger};
 
         std::vector<size_t> regs;
         for (auto i : interf) {
@@ -764,7 +770,7 @@ struct GraphColoring {
 
     bool regAlloc(size_t i) {
         if (i == registers.size()) {
-            println("[graph-color] SUCESSS!!!!");
+            logger->DEBUG("[graph-color] SUCESSS!!!!");
             return true;
         }
 
@@ -781,13 +787,13 @@ struct GraphColoring {
 
                 assert(!allocated.contains(self));
                 allocated.emplace(self, x86::fromRaw(j));
-                println("[graph-color] allocating self: {}", self);
+                logger->DEBUG("[graph-color] allocating self: {}", self);
                 if (regAlloc(i + 1)) return true;
                 allocated.erase(self);
             }
 
             if (sucesses == 0) {
-                println("[graph-color] FAILED to allocate ID: {}", self);
+                logger->DEBUG("[graph-color] FAILED to allocate ID: {}", self);
             }
         }
 
@@ -805,7 +811,7 @@ struct GraphColoring {
 
             assert(!allocated.contains(reg));
             allocated.emplace(reg, x86::fromRaw(j));
-            println("[graph-color] allocating self: {}", reg);
+            logger->DEBUG("[graph-color] allocating self: {}", reg);
 
             return reg;
         }
@@ -851,6 +857,10 @@ struct Graph {
 
     size_t virtCounter = 0;
     std::vector<size_t> stackSizes;
+    std::shared_ptr<Logger> logger;
+
+    Graph(std::shared_ptr<Logger> logger): logger(logger) {
+    }
 
     size_t totalStackSize() const {
         size_t acu = 0;
@@ -888,11 +898,11 @@ struct Graph {
 
             auto res = gc.regAllocFast();
             if (not res.has_value()) return gc;
-            println("[graph-color] FAILED to color {}", *res);
+            logger->DEBUG("[graph-color] FAILED to color {}", *res);
 
             auto toSpill = gc.getInterferenceMaxNeighbour(*res);
 
-            println("[graph-color] spilling {}", toSpill);
+            logger->DEBUG("[graph-color] spilling {}", toSpill);
             this->spill(new Virtual{toSpill});
 
             Graph::GVEmit ee1;
@@ -1166,7 +1176,7 @@ struct Graph {
             }
         }
 
-        GraphColoring gc = GraphColoring::create(virtToVirt2);
+        GraphColoring gc = GraphColoring::create(logger, virtToVirt2);
         for (auto [virt, physs] : virtToPhy) {
             for (auto phys : physs) {
                 gc.colorReg(physVirtBase+phys.getRawValue(), phys);
@@ -1401,6 +1411,10 @@ struct Lower {
     std::map<void*, StackSlot> allocaSlots;
     std::string name;
     Graph g;
+
+    Lower(std::shared_ptr<Logger> logger): g(logger) {
+
+    }
 
 
     StackSlot allocateStack(size_t size, size_t alignment) {

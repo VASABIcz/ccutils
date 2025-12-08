@@ -7,6 +7,24 @@
 #include "LiveRanges.h"
 #include "BlockId.h"
 
+struct StringBuilder {
+    std::stringstream ss;
+
+    template<typename... Args>
+    constexpr auto appendLine(StringChecker<type_identity_t<Args>...> strArg, Args&&... argz) {
+        ss << stringify(strArg, std::forward<Args>(argz)...) << endl;
+    }
+
+    constexpr auto appendLine(std::string_view sv) {
+        ss << sv << endl;
+    }
+
+    template<typename... Args>
+    constexpr auto append(StringChecker<type_identity_t<Args>...> strArg, Args&&... argz) {
+        ss << stringify(strArg, std::forward<Args>(argz)...);
+    }
+};
+
 template<typename CTX>
 struct ControlFlowGraph {
     typedef CodeBlock<CTX> BaseBlock;
@@ -28,6 +46,25 @@ struct ControlFlowGraph {
                 instruction->print(*static_cast<CTX::IRGEN*>(nullptr));
             }
         }
+    }
+
+    std::string toString() {
+        StringBuilder sb;
+
+        this->registersToString(sb);
+        for (auto& block : this->validNodes()) {
+            const auto & instructions = block->getInstructions();
+            sb.appendLine("{}", block->tag);
+            if (instructions.empty()) {
+                sb.appendLine("  _ := TERMINAL");
+            }
+            for (auto& instruction : instructions) {
+                sb.append("   ");
+                sb.appendLine(instruction->toString(*static_cast<CTX::IRGEN*>(nullptr)));
+            }
+        }
+
+        return sb.ss.str();
     }
 
     std::vector<BlockId> getTargets(BlockId id) {
@@ -275,6 +312,13 @@ struct ControlFlowGraph {
         for (const auto& reg : getRegistersConst()) {
             auto root = getRoot(reg->getHandle()).getHandle();
             println("id: {} - name: {} - parent: {} - type: {} - size: {}", reg->getHandle().toString(), reg->name, root == reg->getHandle() ? "_" : root.toString(), reg->typeString(), reg->sizeBytes());
+        }
+    }
+
+    void registersToString(StringBuilder& sb) {
+        for (const auto& reg : getRegistersConst()) {
+            auto root = getRoot(reg->getHandle()).getHandle();
+            sb.appendLine("id: {} - name: {} - parent: {} - type: {} - size: {}", reg->getHandle().toString(), reg->name, root == reg->getHandle() ? "_" : root.toString(), reg->typeString(), reg->sizeBytes());
         }
     }
 

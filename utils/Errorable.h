@@ -39,11 +39,15 @@ public:
     MockError() = default;
 };
 
+inline bool SIMPLE_ERROR_LOGGING = false;
+
 class SimpleError: public Errorable {
     DEBUG_INFO(SimpleError)
 public:
     SimpleError(string message): mMessage(std::move(message)) {
-        cout << "mejking error " << this->mMessage << endl;
+        if (SIMPLE_ERROR_LOGGING) {
+            cout << "mejking error " << this->mMessage << endl;
+        }
     }
 
     [[nodiscard]] string_view type() const override {
