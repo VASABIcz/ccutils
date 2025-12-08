@@ -68,15 +68,10 @@ public:
         return true;
     }
 
-    bool mIsLoopHeader = false;
-    string tag;
-    BlockId blockId;
-    vector<CopyPtr<IRInstruction<CTX>>> instructions{};
-
-    std::string toString(CTX::IRGEN& gen) {
+    std::string toString() {
         std::stringstream stream;
         for (auto& inst : getInstructions()) {
-            inst->print(gen, stream);
+            inst->print(stream);
             stream << "\\l";
         }
         return stream.str();
@@ -283,4 +278,9 @@ public:
     unique_ptr<T> createInstruction(Args&&... args) {
         return make_unique<T>(std::forward<Args>(args)...);
     }
+
+    bool mIsLoopHeader = false;
+    string tag;
+    BlockId blockId;
+    vector<CopyPtr<IRInstruction<CTX>>> instructions{};
 };
