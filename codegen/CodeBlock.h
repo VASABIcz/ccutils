@@ -266,13 +266,13 @@ public:
     }
 
     template<typename T, typename ...Args>
-    void insertInst(size_t id, Args&&... args) {
-        instructions.emplace(instructions.begin()+id, createInstruction<T>(std::forward<Args>(args)...));
+    T* insertInst(size_t id, Args&&... args) {
+        return instructions.emplace(instructions.begin()+id, createInstruction<T>(std::forward<Args>(args)...))->get();
     }
 
     template<template<typename> typename T, typename ...Args>
-    void insertInst(size_t id, Args&&... args) {
-        instructions.emplace(instructions.begin()+id, createInstruction<T<CTX>>(std::forward<Args>(args)...));
+    T<CTX>* insertInst(size_t id, Args&&... args) {
+        return instructions.emplace(instructions.begin()+id, createInstruction<T<CTX>>(std::forward<Args>(args)...))->get();
     }
 
     template<typename T, typename ...Args>
