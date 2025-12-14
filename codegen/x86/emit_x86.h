@@ -174,7 +174,7 @@ struct EmitCtx {
                     mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
                 },
                 CASE_VAL(SETGE*) {
-                    mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
+                    mc.setCC(getReg(it->defs[0]), CmpType::GreaterOrEqual);
                 },
                 CASE_VAL(SETLS*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::Less);
