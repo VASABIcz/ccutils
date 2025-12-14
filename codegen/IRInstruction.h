@@ -139,6 +139,26 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         if (target.isValid()) s.insert(target);
         return s;
     }
+
+    std::set<SSARegisterHandle> getSrces() {
+        std::set<SSARegisterHandle> res;
+
+        for (auto src : getSources()) {
+            res.insert(src);
+        }
+
+        return res;
+    }
+
+    void patchSrc(SSARegisterHandle old, SSARegisterHandle newer) {
+        visitSrcs([&](auto& src) {
+            if (src == old) src = newer;
+        });
+    }
+
+    void patchDst(SSARegisterHandle old, SSARegisterHandle newer) {
+        if (target == old) target = newer;
+    }
 private:
     virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {}
 };
