@@ -272,7 +272,10 @@ public:
 
     template<template<typename> typename T, typename ...Args>
     T<CTX>* insertInst(size_t id, Args&&... args) {
-        return instructions.emplace(instructions.begin()+id, createInstruction<T<CTX>>(std::forward<Args>(args)...))->get();
+        auto inst = createInstruction<T<CTX>>(std::forward<Args>(args)...);
+        auto leak = inst.get();
+        instructions.emplace(instructions.begin()+id, std::move(inst));
+        return leak;
     }
 
     template<typename T, typename ...Args>
