@@ -153,7 +153,7 @@ struct EmitCtx {
                     requestStack(it->slot, imm, it->offset);
                 },
                 CASE_VAL(LOADSTACK*) {
-                    auto imm = mc.readStack(500'000, getReg(it->defs[0]));
+                    auto imm = mc.readStack(getReg(it->defs[0]), it->size, 500'000);
                     requestStack(it->slot, imm, it->offset);
                 },
                 CASE_VAL(MUL*) {
@@ -168,6 +168,7 @@ struct EmitCtx {
                 },
                 CASE_VAL(SETNZ*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::NotEqual);
+                    mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
                 },
                 CASE_VAL(SETGT*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::Greater);
@@ -175,6 +176,7 @@ struct EmitCtx {
                 },
                 CASE_VAL(SETGE*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::GreaterOrEqual);
+                    mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
                 },
                 CASE_VAL(SETLS*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::Less);
@@ -182,6 +184,7 @@ struct EmitCtx {
                 },
                 CASE_VAL(SETLE*) {
                     mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
+                    mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
                 },
                 CASE_VAL(XOR*) {
                     mc.writeRegInst(X64Instruction::xorI, getReg(it->defs[0]), getReg(it->uses[1]));

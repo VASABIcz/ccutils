@@ -3,10 +3,12 @@
 #include "codegen/ControlFlowGraph.h"
 #include "codegen/IRInstruction.h"
 #include "codegen/IRInstructions.h"
+#include "codegen/SSARegisterHandle.h"
 #include "utils/utils.h"
 #include "x86_insts.h"
 #include "gen64/definitions.h"
 #include <chrono>
+#include <cstddef>
 #include "utils/Logger.h"
 
 struct BaseRegister {
@@ -441,8 +443,9 @@ struct LOADSTACK : X86Instruction {
 
     StackSlot slot;
     long offset;
+    size_t size;
 
-    LOADSTACK(BaseRegister* dst, StackSlot slot, long offset): slot(slot), offset(offset) {
+    LOADSTACK(BaseRegister* dst, StackSlot slot, long offset, size_t size): slot(slot), offset(offset), size(size) {
         this->defs.push_back(dst);
     }
 };
@@ -888,7 +891,7 @@ struct Graph {
 
     std::string tag;
 
-    GraphColoring registerAllocate() {
+    GraphColoring registerAllocate(std::function<std::string(size_t)> getPath) {
         size_t spillCounter = 0;
 
         while (true) {
@@ -907,7 +910,7 @@ struct Graph {
 
             Graph::GVEmit ee1;
             emitGV2(ee1);
-            writeBytesToFile(stringify("x86/{}-spill{}", tag, spillCounter), ee1.ss.str());
+            writeBytesToFile(getPath(spillCounter), ee1.ss.str());
 
             spillCounter += 1;
         }
@@ -1131,7 +1134,7 @@ struct Graph {
                 }
                 if (inst->hasUseVirt(regId->id)) {
                     auto tmp = allocaVirtReg();
-                    block->insertBefore(inst, new LOADSTACK(tmp, stackSlot, 0));
+                    block->insertBefore(inst, new LOADSTACK(tmp, stackSlot, 0, 8));
                     inst->rewriteUse(regId, tmp);
                 }
                 assert(!inst->hasDefVirt(regId->id));
@@ -1238,7 +1241,7 @@ struct Graph {
         e.appendLine("b{} [", id);
 
         e.ident([&] {
-            e.appendLine("label = \"");
+            e.appendLine(R"(xlabel="B{}", label = "{)", id);
 
             for (auto inst : b->iterator()) {
                 std::stringstream ss;
@@ -1247,7 +1250,7 @@ struct Graph {
 
                 if (inst->next != nullptr) e.appendLine("|");
             }
-            e.appendLine("\";");
+            e.appendLine("}\";");
         });
 
         e.appendLine("]");
@@ -1255,9 +1258,9 @@ struct Graph {
 
     void emitGV2(GVEmit& e) {
         e.appendLine("digraph G {");
-
-        e.appendLine("rankdir=LR;");
-        e.appendLine("node [shape=record];");
+        e.appendLine("node [shape=Mrecord, fontsize=66];");
+        e.appendLine("dummy0 -> b0:i0;");
+        e.appendLine("dummy0 -> v1;");
 
         e.ident([&] {
             // blocks
@@ -1268,18 +1271,25 @@ struct Graph {
             // block edges
             for (auto src: blocks) {
                 for (auto dst : src->outgoing) {
-                    e.appendLine("b{}:i{} -> b{}:i{};", src->id, src->size-1, dst->id, 0);
+                    e.appendLine("b{}:i{} -> b{}:i{} [tailport=s, headport=n];", src->id, src->last->orderId, dst->id, dst->first->orderId);
                 }
             }
 
             // virt regs
+            std::optional<std::size_t> lastId;
             e.appendLine("subgraph {");
             for (auto block : blocks) {
                 for (auto [regId, range] : virtualRanges[block]) {
                     e.appendLine("v{} [shape=oval]", regId);
                     auto color = (range.first->hasDefVirt(regId)) ? "green"sv : "red"sv;
-                    e.appendLine("v{} -> b{}:i{} [color={}];", regId, block->id, range.first->orderId, color);
-                    e.appendLine("v{} -> b{}:i{} [color=blue];", regId, block->id, range.last->orderId);
+                    auto xd = false;
+                    e.appendLine("v{} -> b{}:i{} [color={}, constraint={}, concentrate=false];", regId, block->id, range.first->orderId, color, (xd ? "true" : "false"));
+                    e.appendLine("v{} -> b{}:i{} [color=blue, constraint={}, concentrate=false];", regId, block->id, range.last->orderId, (xd ? "true" : "false"));
+                    e.appendLine("v{} -> b{} [style=invis, constraint=true, concentrate=false];", regId, block->id);
+                    if (lastId.has_value()) {
+                        e.appendLine("v{} -> v{} [style=invis];", *lastId, regId);
+                    }
+                    lastId = regId;
                 }
             }
             e.appendLine("}");
@@ -1290,7 +1300,7 @@ struct Graph {
                 for (auto [regId, rangeSet] : physicalRanges[block]) {
                     // e.appendLine("{} [shape=oval]", regId.toString());
                     for (auto range : rangeSet.ranges) {
-                        e.appendLine("b{}:i{} -> b{}:i{} [color=purple] [label={}];", block->id, range.first->orderId, block->id, range.last->orderId, regId.toString());
+                        // e.appendLine("b{}:i{} -> b{}:i{} [color=purple] [label={}, tailport=w];", block->id, range.first->orderId, block->id, range.last->orderId, regId.toString());
                     }
                 }
             }
@@ -1482,7 +1492,6 @@ struct Lower {
             consumed.push_back(inst);
             return true;
         } else if (auto sim1 = pattern->as<SimpleWildPattern>(); sim1) {
-            // std::cout << "MRDAAAAAAAAAAAAA???? " << typeid(*inst).name() << " VS? " << sim->base << std::endl;
             if (typeid(*inst).name() != sim1->base) return false;
 
             for (auto i = 0ul; i < inst->srcCount(); i++) {
@@ -1514,7 +1523,7 @@ struct Lower {
                         auto saveType = x86::sysVSave(reg);
                         if (saveType != x86::X64Register::SaveType::Callee) continue;
 
-                        block->insertBefore(inst, new LOADSTACK(new Physical(reg), ss[reg], 0));
+                        block->insertBefore(inst, new LOADSTACK(new Physical(reg), ss[reg], 0, 8));
                     }
                 }
             }
@@ -1645,7 +1654,7 @@ struct Lower {
 
         if (ret.size() == 2) {
             defs.push_back(x86::Rax);
-            defs.push_back(x86::Rdi);
+            defs.push_back(x86::Rdx);
         } else if (ret.size() == 1) {
             defs.push_back(x86::Rax);
         }
@@ -1667,7 +1676,7 @@ struct Lower {
 
         if (ret.size() == 2) {
             block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
-            block->push<MOV>(getReg(ret[1]), new Physical(x86::Rdi));
+            block->push<MOV>(getReg(ret[1]), new Physical(x86::Rdx));
         } else if (ret.size() == 1) {
             block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
         }
@@ -1695,7 +1704,7 @@ struct Lower {
     void lowerIR(ControlFlowGraph<CTX>& cfg) {
         using OP = Assembler::BinaryOp;
         using TYP = Assembler::BaseDataType;
-
+        auto argCounter = 0;
         RewriteBuilder rewrites;
 
         rewrites
@@ -1762,7 +1771,8 @@ struct Lower {
             .makeRewrite(
                 makePattern<instructions::PointerLoad>(makePattern<instructions::AllocaPtr>()),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<LOADSTACK>(getReg(*inst), allocaSlots[inst[0].inst], inst->template cst<instructions::PointerLoad>()->offset);
+                    auto pLoad = inst->template cst<instructions::PointerLoad>();
+                    block->push<LOADSTACK>(getReg(*inst), allocaSlots[inst[0].inst], pLoad->offset, cfg.getSize(pLoad->target));
                 })
 
             .makeRewrite(
@@ -1840,8 +1850,9 @@ struct Lower {
             .makeRewrite(
                 makePattern<instructions::Arg>(),
                 [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<FAKE_DEF>(new Physical(x86::Rdi));
-                    block->push<MOV>(getReg(*inst), new Physical(x86::Rdi));
+                    auto reg = x86::SYSV_REGS[argCounter++];
+                    block->push<FAKE_DEF>(new Physical(reg));
+                    block->push<MOV>(getReg(*inst), new Physical(reg));
                 })
 
             .makeRewrite(
