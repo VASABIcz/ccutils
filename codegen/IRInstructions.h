@@ -514,6 +514,30 @@ namespace instructions {
     };
 
     template<typename CTX>
+    struct ReturnCompound: public NamedIrInstruction<"return_compound", CTX> {
+        PUB_VIRTUAL_COPY(ReturnCompound)
+
+        std::vector<SSARegisterHandle> parts;
+
+        explicit ReturnCompound(std::vector<SSARegisterHandle> parts): NamedIrInstruction<"return_compound", CTX>(SSARegisterHandle::invalid()), parts(std::move(parts)) {}
+
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& s : parts) fn(s);
+        }
+
+        void generate(CTX::GEN&) override {
+            TODO()
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", parts);
+        }
+
+        bool isTerminal() const override {return true;}
+    };
+
+    template<typename CTX>
     struct IntLiteral: public NamedIrInstruction<"int", CTX> {
         PUB_VIRTUAL_COPY(IntLiteral)
         size_t value;
@@ -651,7 +675,7 @@ namespace instructions {
         SSARegisterHandle ptr;
         i64 offset;
 
-        PointerLoad(SSARegisterHandle target, SSARegisterHandle ptr, i64 offset = 0): NamedIrInstruction<"ptr_load", CTX>(target), ptr(ptr), offset(offset) {}
+        PointerLoad(SSARegisterHandle target, SSARegisterHandle ptr, size_t size, i64 offset): NamedIrInstruction<"ptr_load", CTX>(target), ptr(ptr), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(ptr);
@@ -813,6 +837,27 @@ namespace instructions {
 
         void generate(CTX::GEN& gen) override {
             TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct AddressOf: public NamedIrInstruction<"address_of", CTX> {
+        PUB_VIRTUAL_COPY(AddressOf)
+        SSARegisterHandle obj;
+        size_t offset;
+
+        AddressOf(SSARegisterHandle target, SSARegisterHandle obj, size_t offset = 0): NamedIrInstruction<"address_of", CTX>(target), obj(obj) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            fn(obj);
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", obj);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            PANIC("AddressOf is a virtual instruction that must be lowered first to alloca")
         }
     };
 }

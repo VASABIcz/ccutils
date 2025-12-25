@@ -960,7 +960,6 @@ void X86Assembler::signExtend(Assembler::RegisterHandle dst, Assembler::Register
 }
 
 void X86Assembler::initializeSYSV() {
-    const std::array<x86::X64Register, 6> SYSV_REGS{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
     const x86::X64Register TMP_REG = x86::Rax;
     const auto STACK_ARGS_BASE = 16;
 
@@ -979,19 +978,19 @@ void X86Assembler::initializeSYSV() {
     if (retSize > REG_SIZE*2) {
         assert(isAligned(retSize, REG_SIZE));
         // reserve Rdi for return ptr
-        allocator.acquireSpecific(SYSV_REGS[allocatedArgs]);
+        allocator.acquireSpecific(x86::SYSV_REGS[allocatedArgs]);
         allocatedArgs += 1;
     }
 
     for (auto argSize : argSizes) {
-        if (argSize <= REG_SIZE && allocatedArgs < SYSV_REGS.size()) {
-            argHandles.push_back(allocator.acquireSpecific(SYSV_REGS[allocatedArgs]));
+        if (argSize <= REG_SIZE && allocatedArgs < x86::SYSV_REGS.size()) {
+            argHandles.push_back(allocator.acquireSpecific(x86::SYSV_REGS[allocatedArgs]));
             allocatedArgs += 1;
-        } else if (argSize <= REG_SIZE*2 && allocatedArgs <= SYSV_REGS.size()-2) {
+        } else if (argSize <= REG_SIZE*2 && allocatedArgs <= x86::SYSV_REGS.size()-2) {
             auto stack = allocator.allocateStack(REG_SIZE*2);
 
-            mc.writeStackAmount(allocator.getStackOffset(stack), SYSV_REGS[allocatedArgs], REG_SIZE);
-            mc.writeStackAmount(allocator.getStackOffset(stack)+REG_SIZE, SYSV_REGS[allocatedArgs+1], argSize-REG_SIZE);
+            mc.writeStackAmount(allocator.getStackOffset(stack), x86::SYSV_REGS[allocatedArgs], REG_SIZE);
+            mc.writeStackAmount(allocator.getStackOffset(stack)+REG_SIZE, x86::SYSV_REGS[allocatedArgs+1], argSize-REG_SIZE);
 
             argHandles.push_back(stack);
 

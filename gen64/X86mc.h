@@ -398,6 +398,10 @@ public:
 
     ImmSpace readStack(int byteOffset, const x86::X64Register& tgt);
 
+    ImmSpace readStack(const x86::X64Register& tgt, size_t size, int byteOffset) {
+        return readMem(tgt, x86::Rsp, byteOffset, size);
+    }
+
     ImmSpace readPtr(const x86::X64Register& dst, const x86::X64Register& src, int32_t offset, SibScale scale = SibScale::One);
 
     ImmSpace read4(const x86::X64Register& dst, const x86::X64Register& src, int32_t offset) {
@@ -742,18 +746,18 @@ public:
         return this->bytes.data()+spejc.offset;
     }
 
-    void readMem(x86::X64Register dst, x86::X64Register src, int32_t offset, size_t size) {
+    ImmSpace readMem(x86::X64Register dst, x86::X64Register src, int32_t offset, size_t size) {
         if (size == 8) {
-            readPtr(dst, src, offset);
+            return readPtr(dst, src, offset);
         } else if (size == 4) {
-            read4(dst, src, offset);
+            return read4(dst, src, offset);
         } else if (size == 2) {
-            read2(dst, src, offset);
+            return read2(dst, src, offset);
         } else if (size == 1) {
-            read1(dst, src, offset);
+            return read1(dst, src, offset);
         }
         else {
-            PANIC("invalid input");
+            PANIC("invalid input {}", size);
         }
     }
 
@@ -774,7 +778,6 @@ public:
 
     void invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret, const map<x86::X64Register, size_t>& saved, std::function<void(x86::X64Register, Arg, ImmSpace)> movLabel) {
         /// 6GP registers used for passing arguments
-        const std::array<x86::X64Register, 6> SYSV_REGS{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
         /// temporaries for local use
         const auto TMP_REG = x86::R10;
         const auto TMP_REG2 = x86::Rax;
@@ -785,7 +788,7 @@ public:
         /// list of registers that cant be accesed, bcs they are regs or temporaries for local use
         /// the stack preserved version should be used
         set<x86::X64Register> CLOBBER_SET;
-        CLOBBER_SET.insert(SYSV_REGS.begin(), SYSV_REGS.end());
+        CLOBBER_SET.insert(x86::SYSV_REGS.begin(), x86::SYSV_REGS.end());
         CLOBBER_SET.insert(TMP_REG);
         CLOBBER_SET.insert(TMP_REG2);
 
@@ -823,15 +826,15 @@ public:
         vector<Arg> toBeStackPassed;
 
         const auto getAllocatedReg = [&](size_t idex) {
-          assert(idex < SYSV_REGS.size());
+          assert(idex < x86::SYSV_REGS.size());
 
-            return SYSV_REGS[idex];
+            return x86::SYSV_REGS[idex];
         };
 
         // try to populate arg regs
         for (const auto& arg : args) {
             // value can fit into single arg reg
-            if (arg.sizeBytes() <= 8 && allocatedArgs < SYSV_REGS.size()) {
+            if (arg.sizeBytes() <= 8 && allocatedArgs < x86::SYSV_REGS.size()) {
                 auto argReg = getAllocatedReg(allocatedArgs);
                 switch (arg.type) {
                     case Arg::REGISTER:
@@ -856,7 +859,7 @@ public:
                 }
                 allocatedArgs += 1;
             }
-            else if (arg.sizeBytes() <= 16 && allocatedArgs <= SYSV_REGS.size()-2) { // value can fit into 2 arg regs
+            else if (arg.sizeBytes() <= 16 && allocatedArgs <= x86::SYSV_REGS.size()-2) { // value can fit into 2 arg regs
                 auto argRegA = getAllocatedReg(allocatedArgs);
                 auto argRegB = getAllocatedReg(allocatedArgs+1);
                 switch (arg.type) {

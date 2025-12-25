@@ -46,6 +46,10 @@ struct ControlFlowGraph {
         }
     }
 
+    size_t getSize(SSARegisterHandle hand) {
+        return getRecord(hand).sizeBytes();
+    }
+
     std::string toString() {
         StringBuilder sb;
 

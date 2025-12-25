@@ -239,6 +239,8 @@ REEG(R15)
 
 constexpr std::array<x86::X64Register, 16> ALL_REGS = {Rax, Rbx, Rcx, Rdx, Rsi, Rdi, Rbp, Rsp, R8, R9, R10, R11, R12, R13, R14, R15};
 
+constexpr std::array<x86::X64Register, 6> SYSV_REGS{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
+
 inline X64Register::SaveType fastCallSave(const X64Register& reg) {
     using enum X64RegisterType;
     switch (reg.getValue()) {
