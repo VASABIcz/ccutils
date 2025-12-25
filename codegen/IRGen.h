@@ -26,9 +26,9 @@ public:
         return loopIdCounter++;
     }
 
-    BaseBlock& getBlock(size_t blockId) { return graph.getBlock(blockId); }
+    BaseBlock& getBlock(BlockId blockId) { return graph.getBlock(blockId); }
 
-    [[nodiscard]] const BaseBlock& getBlockConst(size_t blockId) const { return graph.getBlockConst(blockId); }
+    [[nodiscard]] const BaseBlock& getBlockConst(BlockId blockId) const { return graph.getBlockConst(blockId); }
 
     // void stackPush(SSARegisterHandle target) { registerStack.push(target); }
 
@@ -45,7 +45,7 @@ public:
 
     [[nodiscard]] const CTX::REG& getRootConst(SSARegisterHandle target) const { return graph.getRootConst(target); }
 
-    auto& root() { return graph.getBlock(0); }
+    auto& root() { return graph.getBlock(BlockId::raw(0)); }
 
     auto nodes() { return graph.validNodes(); }
 
@@ -59,7 +59,7 @@ public:
             }
             for (auto& instruction : instructions) {
                 cout << "  ";
-                instruction->print(*static_cast<CTX::IRGEN*>(this));
+                instruction->print();
             }
         }
     }

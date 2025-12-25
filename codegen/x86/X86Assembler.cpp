@@ -391,7 +391,7 @@ void X86Assembler::shrInt(Assembler::RegisterHandle dest, Assembler::RegisterHan
 }
 
 void X86Assembler::nop() {
-    mc.nop();
+    // mc.nop();
 }
 
 void X86Assembler::garbageMemCpy(x86::X64Register ptrReg, size_t stackOffset, size_t stackSize) {
@@ -866,30 +866,6 @@ void X86Assembler::garbageMemCpy(x86::X64Register dst, size_t dstOffset, x86::X6
     }, ignore);
 }
 
-template<typename T>
-void X86Assembler::withTempReg(T callback, span<const x86::X64Register> ign) {
-    callWrapper(callback, &T::operator(), ign);
-}
-
-template<typename Ret, typename Class, typename... Args>
-void X86Assembler::finallCallbackWrapper(Class obj, Ret (Class::*lambda)(Args...) const, Args... args) {
-    (obj.*lambda)(args...);
-}
-
-template<typename Class, typename... Args>
-void X86Assembler::callWrapper(Class obj, void (Class::*lambda)(Args...) const, span<const x86::X64Register> ignore1) {
-    vector<pair<x86::X64Register, optional<size_t>>> restorCtx;
-    set<x86::X64Register> clobbered;
-
-    for (auto ing : ignore1) {
-        clobbered.insert(ing);
-    }
-
-    finallCallbackWrapper(obj, lambda, std::forward<Args>(idk2(clobbered, restorCtx))...);
-
-    restoreRegState(restorCtx);
-}
-
 void X86Assembler::addressOf(Assembler::RegisterHandle tgt, Assembler::RegisterHandle obj) {
     assert(allocator.isStack(obj));
     auto offset = allocator.getStackOffset(obj);
@@ -1153,7 +1129,7 @@ void X86Assembler::invokeScuffedSYSV(Arg func, span<Arg> args, optional<Arg> ret
         }
     }
 
-    withSavedCallRegs(exclude, excludeRestore, x86::sysVSave, [&](const auto& saved){
+    withSavedCallRegs(exclude, excludeRestore, x86::sysVSave, [&](const auto& saved) {
         mc.invokeScuffedSYSV2(func, args, ret, saved, [&](auto dst, auto sym, auto imm) {
             generateArgMove(dst, sym, imm);
         });

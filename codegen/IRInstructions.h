@@ -5,7 +5,6 @@
 
 #include "CodeBlock.h"
 #include "SSARegisterHandle.h"
-#include "IRGen.h"
 #include "CodeGen.h"
 #include "Assembler.h"
 
@@ -91,7 +90,7 @@ namespace instructions {
     template<typename CTX>
     struct PhiFunction: public NamedIrInstruction<"phi", CTX> {
     PUB_VIRTUAL_COPY(PhiFunction)
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", stringify(versions, {{", ", "", ""}}));
         }
 
@@ -101,10 +100,10 @@ namespace instructions {
             }
         }
 
-        PhiFunction(SSARegisterHandle target, map<size_t, SSARegisterHandle> versions) : NamedIrInstruction<"phi", CTX>(target),
+        PhiFunction(SSARegisterHandle target, map<BlockId, SSARegisterHandle> versions) : NamedIrInstruction<"phi", CTX>(target),
                                                                                          versions(std::move(versions)) {}
 
-        PhiFunction(SSARegisterHandle target, span<pair<SSARegisterHandle, size_t>> versions) : NamedIrInstruction<"phi", CTX>(target) {
+        PhiFunction(SSARegisterHandle target, span<pair<SSARegisterHandle, BlockId>> versions) : NamedIrInstruction<"phi", CTX>(target) {
             for (auto version: versions) {
                 this->versions.emplace(version.second, version.first);
             }
@@ -116,7 +115,7 @@ namespace instructions {
             // this should be nop
         }
 
-        void pushVersion(SSARegisterHandle handle, size_t block) {
+        void pushVersion(SSARegisterHandle handle, BlockId block) {
             versions[block] = handle;
         }
 
@@ -143,7 +142,7 @@ namespace instructions {
             }
         }
 
-        void remove(size_t block) {
+        void remove(BlockId block) {
             versions.erase(block);
         }
 
@@ -157,18 +156,18 @@ namespace instructions {
             return buf;
         }
 
-        map<size_t, SSARegisterHandle> getRawVersions() const {
+        map<BlockId, SSARegisterHandle> getRawVersions() const {
             return versions;
         }
 
-        optional<SSARegisterHandle> getBySource(size_t src) {
+        optional<SSARegisterHandle> getBySource(BlockId src) {
             if (not versions.contains(src)) return {};
 
             return versions[src];
         }
 
     private:
-        map<size_t, SSARegisterHandle> versions;
+        map<BlockId, SSARegisterHandle> versions;
     };
 
     template<typename CTX>
@@ -188,18 +187,18 @@ namespace instructions {
     struct Branch: public NamedIrInstruction<"branch", CTX> {
     PUB_VIRTUAL_COPY(Branch)
         SSARegisterHandle condition;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(condition);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        Branch(SSARegisterHandle condition, size_t t, size_t f): NamedIrInstruction<"branch", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        Branch(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"branch", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -226,8 +225,8 @@ namespace instructions {
             ctx.jmpBlock(scopeT);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -239,19 +238,19 @@ namespace instructions {
         JumpCondType type;
         SSARegisterHandle lhs;
         SSARegisterHandle rhs;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(lhs);
             fn(rhs);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{} {} {} ? @{} : @{}", lhs.toString(), toString1(type), rhs.toString(), scopeT, scopeF);
         }
 
-        BranchCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, size_t t, size_t f): NamedIrInstruction<"branch_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
+        BranchCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<"branch_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
 
         };
 
@@ -290,8 +289,8 @@ namespace instructions {
             ctx.jmpBlock(scopeT);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return vector<BlockId*>{(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -301,18 +300,18 @@ namespace instructions {
     struct JumpFalse: public NamedIrInstruction<"jump_false", CTX> {
         PUB_VIRTUAL_COPY(JumpFalse)
         SSARegisterHandle condition;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(condition);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        JumpFalse(SSARegisterHandle condition, size_t t, size_t f): NamedIrInstruction<"jump_false", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        JumpFalse(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"jump_false", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -342,8 +341,8 @@ namespace instructions {
             ctx.assignPhis(scopeT);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId> branchTargetsPtr() const override {
+            return {&scopeT, &scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -353,18 +352,18 @@ namespace instructions {
     struct JumpTrue: public NamedIrInstruction<"jump_true", CTX> {
         PUB_VIRTUAL_COPY(JumpTrue)
         SSARegisterHandle condition;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(condition);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        JumpTrue(SSARegisterHandle condition, size_t t, size_t f): NamedIrInstruction<"jump_true", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        JumpTrue(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"jump_true", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -392,19 +391,19 @@ namespace instructions {
             ctx.assignPhis(scopeF);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
     };
 
     template<typename CTX>
-    struct Jump: public IRBaseInstruction<size_t, "jump", CTX> {
+    struct Jump: public IRBaseInstruction<BlockId, "jump", CTX> {
     PUB_VIRTUAL_COPY(Jump)
         bool shouldAssign = true;
 
-        Jump(size_t value): IRBaseInstruction<size_t, "jump", CTX>(SSARegisterHandle::invalid(), value) {}
+        Jump(BlockId value): IRBaseInstruction<BlockId, "jump", CTX>(SSARegisterHandle::invalid(), value) {}
 
         void generate(CTX::GEN& ctx) override {
             if (shouldAssign) ctx.assignPhis(this->value);
@@ -412,7 +411,7 @@ namespace instructions {
             ctx.jmpBlock(this->value);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {return {this->value};}
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override { return std::vector<BlockId*>{(BlockId*)&this->value}; }
 
         bool isTerminal() const override { return true; }
     };
@@ -424,19 +423,19 @@ namespace instructions {
         JumpCondType type;
         SSARegisterHandle lhs;
         SSARegisterHandle rhs;
-        size_t scopeT;
-        size_t scopeF;
+        BlockId scopeT;
+        BlockId scopeF;
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(rhs);
             fn(lhs);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, " {} {} {} ? @{} : @{}", lhs, toString1(type), rhs, scopeT, scopeF);
         }
 
-        JumpCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, size_t t, size_t f): NamedIrInstruction<"jump_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
+        JumpCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<"jump_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
 
         };
 
@@ -465,8 +464,8 @@ namespace instructions {
             ctx.assignPhis(scopeF);
         }
 
-        [[nodiscard]] vector<size_t> branchTargets() const override {
-            return {scopeT, scopeF};
+        [[nodiscard]] vector<BlockId*> branchTargetsPtr() const override {
+            return {(BlockId*)&scopeT, (BlockId*)&scopeF};
         }
 
         bool isTerminal() const override { return true; }
@@ -491,6 +490,30 @@ namespace instructions {
     };
 
     template<typename CTX>
+    struct ReturnCompound: public NamedIrInstruction<"return_compound", CTX> {
+        PUB_VIRTUAL_COPY(ReturnCompound)
+
+        std::vector<SSARegisterHandle> parts;
+
+        explicit ReturnCompound(std::vector<SSARegisterHandle> parts): NamedIrInstruction<"return_compound", CTX>(SSARegisterHandle::invalid()), parts(std::move(parts)) {}
+
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& s : parts) fn(s);
+        }
+
+        void generate(CTX::GEN&) override {
+            TODO()
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", parts);
+        }
+
+        bool isTerminal() const override {return true;}
+    };
+
+    template<typename CTX>
     struct IntLiteral: public NamedIrInstruction<"int", CTX> {
         PUB_VIRTUAL_COPY(IntLiteral)
         size_t value;
@@ -508,7 +531,7 @@ namespace instructions {
                 gen.assembler.movUnsigned(res, value);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", isSigned ? stringify(std::bit_cast<intmax_t>(value)) : stringify(value));
         }
     };
@@ -580,26 +603,6 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct AddressOf: public NamedIrInstruction<"address_of", CTX> {
-        PUB_VIRTUAL_COPY(AddressOf)
-        SSARegisterHandle obj;
-
-        AddressOf(SSARegisterHandle target, SSARegisterHandle obj): NamedIrInstruction<"address_of", CTX>(target), obj(obj) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            fn(obj);
-        }
-
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
-            this->basePrint(stream, "{}", obj);
-        }
-
-        void generate(CTX::GEN& gen) override {
-            gen.assembler.addressOf(gen.getReg(this->target), gen.getReg(obj));
-        }
-    };
-
-    template<typename CTX>
     struct Arg: public NamedIrInstruction<"arg", CTX> {
         PUB_VIRTUAL_COPY(Arg)
 
@@ -607,7 +610,7 @@ namespace instructions {
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "");
         }
 
@@ -620,16 +623,17 @@ namespace instructions {
         PUB_VIRTUAL_COPY(PointerStore)
         SSARegisterHandle ptr;
         SSARegisterHandle value;
+        i64 offset;
 
-        PointerStore(SSARegisterHandle ptr, SSARegisterHandle value): NamedIrInstruction<"ptr_store", CTX>(SSARegisterHandle::invalid()), ptr(ptr), value(value) {}
+        PointerStore(SSARegisterHandle ptr, SSARegisterHandle value, i64 offset = 0): NamedIrInstruction<"ptr_store", CTX>(SSARegisterHandle::invalid()), ptr(ptr), value(value), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(ptr);
             fn(value);
         }
 
-        void print(CTX::IRGEN&, std::ostream& stream) override {
-            this->basePrint(stream, "{} {}", ptr, value);
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}+{} <- {}", ptr, offset, value);
         }
 
         void generate(CTX::GEN& gen) override {
@@ -637,7 +641,7 @@ namespace instructions {
             auto valueReg = gen.getReg(value);
             auto valueSize = gen.sizeBytes(value);
 
-            gen.assembler.writeMem(ptrReg, valueReg, 0, valueSize);
+            gen.assembler.writeMem(ptrReg, valueReg, offset, valueSize);
         }
     };
 
@@ -653,8 +657,8 @@ namespace instructions {
             fn(ptr);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
-            this->basePrint(stream, "{}", ptr);
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}+{}", ptr, offset);
         }
 
         void generate(CTX::GEN& gen) override {
@@ -677,7 +681,7 @@ namespace instructions {
             fn(subject);
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", subject);
         }
 
@@ -686,26 +690,6 @@ namespace instructions {
             auto tgtSize = gen.sizeBytes(subject);
 
             gen.assembler.movUnsigned(tgt, tgtSize);
-        }
-    };
-
-    /// stack allocation - allocate nB sized value
-    template<typename CTX>
-    struct Alloca: public NamedIrInstruction<"alloca", CTX> {
-        PUB_VIRTUAL_COPY(Alloca)
-        size_t size;
-
-        Alloca(SSARegisterHandle target, size_t size): NamedIrInstruction<"alloca", CTX>(target), size(size) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-        }
-
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
-            this->basePrint(stream, "{}", size);
-        }
-
-        void generate(CTX::GEN& gen) override {
-            // handled by CodeGen
         }
     };
 
@@ -720,12 +704,115 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
 
-        void print(CTX::IRGEN& gen, std::ostream& stream) override {
+        void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", size);
         }
 
         void generate(CTX::GEN& gen) override {
             // handled by CodeGen
+        }
+    };
+
+    template<typename CTX>
+    struct BitExtract: public NamedIrInstruction<"bit_extract", CTX> {
+        PUB_VIRTUAL_COPY(BitExtract)
+        SSARegisterHandle subject;
+        i64 offset;
+        i64 size;
+
+        BitExtract(SSARegisterHandle target, SSARegisterHandle subject, i64 offset, i64 size): NamedIrInstruction<"bit_extract", CTX>(target), subject(subject), offset(offset), size(size) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            fn(subject);
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}[{}..<{}]", subject, offset, offset+size);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct MakeCompound: public NamedIrInstruction<"make_compound", CTX> {
+        PUB_VIRTUAL_COPY(MakeCompound)
+        std::vector<SSARegisterHandle> inputs;
+
+        MakeCompound(SSARegisterHandle target, std::vector<SSARegisterHandle> inputs): NamedIrInstruction<"make_compound", CTX>(target), inputs(inputs) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& input : inputs) fn(input);
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", inputs);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct Dummy: public NamedIrInstruction<"dummy", CTX> {
+        PUB_VIRTUAL_COPY(Dummy)
+
+        Dummy(SSARegisterHandle target): NamedIrInstruction<"dummy", CTX>(target) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "");
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct Builtin: public NamedIrInstruction<"builtin", CTX> {
+        PUB_VIRTUAL_COPY(Builtin)
+        std::string type;
+
+        Builtin(std::string type): NamedIrInstruction<"builtin", CTX>(SSARegisterHandle::invalid()), type(type) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", type);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
+        }
+    };
+
+    template<typename CTX>
+    struct COW: public NamedIrInstruction<"cow", CTX> {
+        PUB_VIRTUAL_COPY(COW)
+
+        SSARegisterHandle src;
+        SSARegisterHandle sub;
+        long offset;
+
+        COW(SSARegisterHandle target, SSARegisterHandle sub, SSARegisterHandle src, long offset): NamedIrInstruction<"cow", CTX>(target), src(src), sub(sub), offset(offset) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            fn(src);
+            fn(sub);
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{} | {} << {}", sub, src, offset);
+        }
+
+        void generate(CTX::GEN& gen) override {
+            TODO();
         }
     };
 }

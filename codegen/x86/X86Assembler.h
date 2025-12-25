@@ -342,14 +342,29 @@ public:
 
     size_t dumpToStack(x86::X64Register reg);
 
+    template<typename T>
+    void withTempReg(T callback, span<const x86::X64Register> ign) {
+        callWrapper(callback, &T::operator(), ign);
+    }
+
     template<typename Ret, typename Class, typename... Args>
-    void finallCallbackWrapper(Class obj, Ret (Class::* lambda)(Args...) const, Args... args);
+    void finallCallbackWrapper(Class obj, Ret (Class::*lambda)(Args...) const, Args... args) {
+        (obj.*lambda)(args...);
+    }
 
     template<typename Class, typename... Args>
-    void callWrapper(Class obj, void (Class::* lambda)(Args...) const, span<const x86::X64Register> ignore1);
+    void callWrapper(Class obj, void (Class::*lambda)(Args...) const, span<const x86::X64Register> ignore1) {
+        vector<pair<x86::X64Register, optional<size_t>>> restorCtx;
+        set<x86::X64Register> clobbered;
 
-    template<typename T>
-    void withTempReg(T callback, span<const x86::X64Register> a);
+        for (auto ing : ignore1) {
+            clobbered.insert(ing);
+        }
+
+        finallCallbackWrapper(obj, lambda, std::forward<Args>(idk2(clobbered, restorCtx))...);
+
+        restoreRegState(restorCtx);
+    }
 
     struct RegAllocCtx {
         X86Assembler* self;
@@ -377,6 +392,7 @@ public:
                 auto hand = self->dumpToStack(reg);
                 assert(not toRestore.contains(reg));
                 toRestore.insert({reg, hand});
+                toFree.emplace(hand);
             } else {
                 assert(not toFree.contains(self->allocator.toHandleStupid(reg)));
                 toFree.emplace(self->allocator.toHandleStupid(reg));
@@ -451,11 +467,9 @@ public:
             didRestore = true;
             for (auto [reg, stack] : toWriteback) {
                 self->movReg(stack, reg);
-                self->freeRegister(reg);
             }
             for (auto [reg, hand] : toRestore) {
                 self->movHandleToReg(reg, hand);
-                self->freeRegister(hand);
             }
             for (auto f : toFree) {
                 self->freeRegister(f);
@@ -520,6 +534,22 @@ public:
     }
 
     Arg handleToArg(size_t handle);
+
+    std::vector<Arg> handleToArg(std::span<size_t> handle) {
+        std::vector<Arg> out;
+
+        for (auto hand : handle) {
+            out.push_back(handleToArg(hand));
+        }
+
+        return out;
+    }
+
+    std::optional<Arg> handleToArg(std::optional<size_t> handle) {
+        if (not handle.has_value()) return {};
+
+        return handleToArg(*handle);
+    }
 
     Arg handleToArgAssume8(size_t handle);
 
@@ -595,7 +625,7 @@ public:
                 break;
             case Arg::IMMEDIATE:
                 assert(imm.size == 8);
-                requestLabel(*arg.symbol, imm, UNWRAP(arg.symbolType), BaseType::ABSOLUTE_8);
+                requestLabel(UNWRAP(arg.symbol), imm, UNWRAP(arg.symbolType), BaseType::ABSOLUTE_8);
                 break;
             case Arg::REG_OFFSET:
                 break;
@@ -603,11 +633,11 @@ public:
                 break;
             case Arg::SYMBOL_RIP_OFF_32:
                 assert(imm.size == 4);
-                requestLabel(*arg.symbol, imm, UNWRAP(arg.symbolType), BaseType::RIP_REL_4);
+                requestLabel(UNWRAP(arg.symbol), imm, UNWRAP(arg.symbolType), BaseType::RIP_REL_4);
                 break;
             case Arg::SYMBOL_RIP_VALUE_32:
                 assert(imm.size == 4);
-                requestLabel(*arg.symbol, imm, UNWRAP(arg.symbolType), BaseType::RIP_REL_4);
+                requestLabel(UNWRAP(arg.symbol), imm, UNWRAP(arg.symbolType), BaseType::RIP_REL_4);
                 break;
         }
     }

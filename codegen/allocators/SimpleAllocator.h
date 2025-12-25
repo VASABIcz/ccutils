@@ -76,6 +76,7 @@ struct SimpleAlloc: Allocator<CTX> {
     }
 
     RegisterHandle internalAllocateRegister(SSARegisterHandle tgt, const RegisterHandle registerHandle, bool check = true) {
+        // println("[REG-ALLOC] allocating {} - {}", tgt, assembler->toString(registerHandle));
         if (alreadyAllocated.contains(tgt) && check) {
             println("trying to double allocate: {} at {}", tgt.toString(), currentInstructionCounter);
             assert(false);
@@ -94,7 +95,7 @@ struct SimpleAlloc: Allocator<CTX> {
     void freeRegister(SSARegisterHandle reg) {
         if (!regs.contains(reg)) std::terminate();
         auto r = regs.at(reg);
-        // println("[GEN] freeing {} -> {}", reg, assembler->toString(r));
+        // println("[REG-ALLOC] freeing {} -> {}", reg, assembler->toString(r));
         regs.erase(reg);
         assembler->freeRegister(r);
     }
@@ -104,11 +105,6 @@ struct SimpleAlloc: Allocator<CTX> {
             if (regs.contains(reg) || !currentLiveRanges.isAlive(reg, currentInstructionCounter)) continue;
 
             // handle allocating of alloca instructions
-            auto alloca = instruction.template cst<instructions::Alloca>();
-            if (alloca != nullptr && alloca->target == reg) {
-                doAlloca(alloca->target, alloca->size);
-                continue;
-            }
             auto alloca1 = instruction.template cst<instructions::AllocaPtr>();
             if (alloca1 != nullptr && alloca1->target == reg) {
                 auto tmp = assembler->allocateStack(alloca1->size);

@@ -138,11 +138,12 @@ struct Arg {
         return idk;
     }
 
-    static Arg Rel32Val(size_t symbol, int32_t adent = 0) {
+    static Arg Rel32Val(size_t type, size_t symbol, int32_t adent = 0) {
         Arg idk;
         idk.symbol = symbol;
         idk.type = Type::SYMBOL_RIP_VALUE_32;
         idk.offset = adent;
+        idk.symbolType = type;
 
         return idk;
     }
@@ -177,27 +178,40 @@ public:
         pushBack(0x05);
     }
 
+    void trap() {
+        pushBack(0xCC);
+    }
+
+    void pushBytes(std::initializer_list<u8> values) {
+        for (auto v : values) pushBack(v);
+    }
+
     template<typename T>
     static bool canFit(auto value) {
         return value >= std::numeric_limits<T>::min() && value <= std::numeric_limits<T>::max();
     }
 
     void patchImm(ImmSpace tgt, size_t offset) {
-        auto s = (long long int)offset - (long long int)(tgt.offset);
+        auto s = (long long int)offset - (long long int)(tgt.offset+tgt.size);
 
+        patchRaw(tgt, s);
+    }
+
+    void patchRaw(ImmSpace tgt, long long int s) {
         if (tgt.size == 1) {
             assert(canFit<i8>(s));
-            writeImmValue<i8>(s);
+            patchImmValue<i8>(tgt.offset, s);
         } else if (tgt.size == 2) {
             assert(canFit<i16>(s));
-            writeImmValue<i16>(s);
+            patchImmValue<i16>(tgt.offset, s);
         } else if (tgt.size == 4) {
             assert(canFit<i32>(s));
-            writeImmValue<i32>(s);
+            patchImmValue<i32>(tgt.offset, s);
         } else {
             TODO();
         }
     }
+
 
     size_t getOffset() {
         return bytes.size();
@@ -214,6 +228,14 @@ public:
         }
 
         return current;
+    }
+
+    template<typename T>
+    void patchImmValue(size_t idex, T b) {
+        u8* src = (u8*)&b;
+        for (auto i = 0ul; i < sizeof(T); i++) {
+            bytes[idex+i] = src[i];
+        }
     }
 
     void rdtscp() {
@@ -280,6 +302,14 @@ public:
 
     void writeRegInst(X64Instruction inst, const x86::X64Register& dest, const x86::X64Register& src);
 
+    void inc(x86::X64Register reg) {
+        writeRegInst(X64Instruction::inc, reg, x86::Zero);
+    }
+
+    void dec(x86::X64Register reg) {
+        writeRegInst(X64Instruction::inc, reg, x86::One);
+    }
+
     void writeRegMemInst(X64Instruction inst, const x86::X64Register& dest, const x86::X64Register& subj, int32_t offset, bool immediate64 = true) {
         writeRex(immediate64, dest.isExt(), subj.isExt());
         writeRMCode(inst);
@@ -329,7 +359,7 @@ public:
 
     void movReg(const x86::X64Register& dest, const x86::X64Register& src);
 
-    void writeStack(int byteOffset, const x86::X64Register& reg);
+    ImmSpace writeStack(int byteOffset, const x86::X64Register& reg);
 
     void shiftRImm(const x86::X64Register& dst, u8 amount) {
         writeRex(true, false, dst.isExt());
@@ -366,9 +396,9 @@ public:
         }
     }
 
-    void readStack(int byteOffset, const x86::X64Register& tgt);
+    ImmSpace readStack(int byteOffset, const x86::X64Register& tgt);
 
-    void readPtr(const x86::X64Register& dst, const x86::X64Register& src, int32_t offset, SibScale scale = SibScale::One);
+    ImmSpace readPtr(const x86::X64Register& dst, const x86::X64Register& src, int32_t offset, SibScale scale = SibScale::One);
 
     ImmSpace read4(const x86::X64Register& dst, const x86::X64Register& src, int32_t offset) {
         writeRex(false, dst.isExt(), src.isExt());
@@ -455,7 +485,7 @@ public:
         }
     }
 
-    void writePtr(const x86::X64Register& dest, const x86::X64Register& src, int32_t offset, SibScale scale = SibScale::One);
+    ImmSpace writePtr(const x86::X64Register& dest, const x86::X64Register& src, int32_t offset, SibScale scale = SibScale::One);
 
     ImmSpace mov(const x86::X64Register& dest, size_t value);
 
@@ -561,7 +591,7 @@ public:
 
     void leave();
 
-    void someOffsetStuffForMov(x86::X64Register dst, x86::X64Register src, int32_t offset);
+    ImmSpace someOffsetStuffForMov(x86::X64Register dst, x86::X64Register src, int32_t offset);
 
     void addFloat(const x86::X64Register& dst, const x86::X64Register& lhs, x86::X64Register rhs, bool is64Bit);
 
@@ -978,6 +1008,13 @@ public:
 
     ImmSpace cmpImm(const x86::X64Register& subj, i32 imm) {
         if (subj.isExt()) writeRex(false, false, subj.isExt());
+        pushBack(0x81);
+        writeModMR(subj, x86::Seven);
+        return this->writeImmValue(imm);
+    }
+
+    ImmSpace cmp64Imm(const x86::X64Register& subj, i32 imm) {
+        writeRex(true, false, subj.isExt());
         pushBack(0x81);
         writeModMR(subj, x86::Seven);
         return this->writeImmValue(imm);

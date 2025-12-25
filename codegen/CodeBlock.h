@@ -10,6 +10,7 @@
 #include "IRInstruction.h"
 #include "../utils/utils.h"
 #include "../utils/CopyPtr.h"
+#include "BlockId.h"
 
 using namespace std;
 
@@ -43,6 +44,7 @@ public:
         assert(isEmpty() || !getInstruction(-1)->isTerminal());
         auto instruction = createInstruction<T>(std::forward<Args>(args)...);
         auto ptr = instruction.get();
+        ptr->codeBlock = this;
         push(std::move(instruction));
 
         return ptr;
@@ -54,7 +56,7 @@ public:
         }
     }
 
-    size_t id() const {
+    BlockId id() const {
         return blockId;
     }
 
@@ -67,14 +69,10 @@ public:
         return true;
     }
 
-    string tag;
-    size_t blockId;
-    vector<CopyPtr<IRInstruction<CTX>>> instructions{};
-
-    std::string toString(CTX::IRGEN& gen) {
+    std::string toString() {
         std::stringstream stream;
         for (auto& inst : getInstructions()) {
-            inst->print(gen, stream);
+            inst->print(stream);
             stream << "\\l";
         }
         return stream.str();
@@ -116,10 +114,36 @@ public:
         return pis;
     }
 
-    vector<size_t> getTargets() const {
+    vector<BlockId> getTargets() const {
         if (instructions.empty()) return {};
 
         return getInstructionConst(-1)->branchTargets();
+    }
+
+    vector<BlockId*> getTargetsPtr() const {
+        if (instructions.empty()) return {};
+
+        return getInstructionConst(-1)->branchTargetsPtr();
+    }
+
+    void patchJumps(BlockId old, BlockId neww) {
+        for (auto tgt : getTargetsPtr()) {
+            if (*tgt == old) {
+                *tgt = neww;
+            }
+        }
+    }
+
+    void patchPhis(BlockId oldBlock, std::set<BlockId> newbies) {
+        for (instructions::PhiFunction<CTX>* phi : getPhiSpan()) {
+            auto vv = phi->getBySource(oldBlock);
+            if (vv.has_value()) {
+                for (auto newb : newbies) {
+                    phi->pushVersion(*vv, newb);
+                }
+                phi->remove(oldBlock);
+            }
+        }
     }
 
     vector<instructions::PhiFunction<CTX>*> getPhiSpan() const {
@@ -142,7 +166,7 @@ public:
         return phis;
     }
 
-    map<SSARegisterHandle, SSARegisterHandle> getPhis(size_t source) const {
+    map<SSARegisterHandle, SSARegisterHandle> getPhis(BlockId source) const {
         map<SSARegisterHandle, SSARegisterHandle> pis;
 
         for (auto phi : getPhiSpan()) {
@@ -183,11 +207,9 @@ public:
         return instructions.empty();
     }
 
-    CodeBlock(string tag, size_t blockId) : tag(std::move(tag)), blockId(blockId) {
+    CodeBlock(string tag, BlockId blockId) : tag(std::move(tag)), blockId(blockId) {
 
     }
-
-    SSARegisterHandle getTarget(size_t id) const { return SSARegisterHandle{blockId, id, true}; }
 
     size_t instructionCount() const {
         return instructions.size();
@@ -213,46 +235,61 @@ public:
         return buf;
     }
 
-/*    SSARegisterHandle pushRegister(string name, GenericType dataType, optional<SSARegisterHandle> previous, SSARegister::Type type) {
-        auto record = make_unique<SSARegister>(blockId, std::move(name), dataType, type);
-
-        const auto id = registers.size();
-        record->id = id;
-        if (previous.has_value()) record->setPrevious(*previous);
-
-        assert(record->getBlockId() == blockId);
-
-        registers.emplace_back(std::move(record));
-
-        return SSARegisterHandle::valid(blockId, id);
-    }*/
-
-    bool mIsLoopHeader = false;
-
     void push(unique_ptr<IRInstruction<CTX>> instruction) {
         instructions.emplace_back(std::move(instruction));
     }
 
-    size_t getId(IRInstruction<CTX>* instruction) const {
-        TODO();
+    size_t indexOf(IRInstruction<CTX>* instruction) const {
+        for (const auto& [i, inst] : instructions | views::enumerate) {
+            if (inst.get() == instruction) return i;
+        }
+        PANIC()
+    }
+
+    size_t indexOf(SSARegisterHandle handle) const {
+        for (const auto& [i, inst] : instructions | views::enumerate) {
+            if (inst->target == handle) return i;
+        }
+        PANIC()
     }
 
     void insert(unique_ptr<IRInstruction<CTX>> instruction, size_t id) {
         instructions.insert(instructions.begin()+id, std::move(instruction));
     }
 
+    void replace(unique_ptr<IRInstruction<CTX>> instruction, size_t id) {
+        instructions[id] = std::move(instruction);
+    }
+
+    void remove(size_t id) {
+        instructions.erase(instructions.begin()+id);
+    }
+
     template<typename T, typename ...Args>
-    void insertInst(size_t id, Args&&... args) {
-        instructions.insert(instructions.begin()+id, CopyPtr<T>{createInstruction<T>(std::forward<Args>(args)...)});
+    T* insertInst(size_t id, Args&&... args) {
+        return instructions.emplace(instructions.begin()+id, createInstruction<T>(std::forward<Args>(args)...))->get();
     }
 
     template<template<typename> typename T, typename ...Args>
-    void insertInst(size_t id, Args&&... args) {
-        instructions.emplace(instructions.begin()+id, createInstruction<T<CTX>>(std::forward<Args>(args)...));
+    T<CTX>* insertInst(size_t id, Args&&... args) {
+        auto inst = createInstruction<T<CTX>>(std::forward<Args>(args)...);
+        auto leak = inst.get();
+        instructions.emplace(instructions.begin()+id, std::move(inst));
+        return leak;
     }
 
     template<typename T, typename ...Args>
     unique_ptr<T> createInstruction(Args&&... args) {
         return make_unique<T>(std::forward<Args>(args)...);
     }
+
+    CTX::CFG* getCFG() {
+        return cfg;
+    }
+
+    bool mIsLoopHeader = false;
+    string tag;
+    BlockId blockId;
+    vector<CopyPtr<IRInstruction<CTX>>> instructions{};
+    CTX::CFG* cfg = nullptr;
 };

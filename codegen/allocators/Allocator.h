@@ -1,7 +1,6 @@
 #pragma once
 
 #include "codegen/SSARegisterHandle.h"
-#include "codegen/IRInstruction.h"
 #include "codegen/LiveRanges.h"
 
 

@@ -21,11 +21,11 @@ public:
         VAR
     };
 
-    SSARegister(size_t blockId, string name, Type type) : name(std::move(name)), blockId(blockId), type(type) {
+    SSARegister(string name, Type type) : name(std::move(name)), type(type) {
 
     }
 
-    SSARegister(size_t blockId, string name, Type type, std::optional<SSARegisterHandle> prev = std::nullopt) : name(std::move(name)), blockId(blockId), previous(prev), type(type) {
+    SSARegister(string name, Type type, std::optional<SSARegisterHandle> prev) : name(std::move(name)), previous(prev), type(type) {
 
     }
 
@@ -52,14 +52,6 @@ public:
 
     optional<SSARegisterHandle> getPrevious() const {
         return previous;
-    }
-
-    size_t getBlockId() const {
-        return blockId;
-    }
-
-    void setBlockId(size_t blockId) {
-        this->blockId = blockId;
     }
 
     [[nodiscard]] bool isTemp() const {

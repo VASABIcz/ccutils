@@ -10,7 +10,7 @@ void RegAlloc::freeReg(size_t handle) {
 }
 
 bool RegAlloc::isAcquired(const x86::X64Register& reg) const {
-    return isAllocated(regToIdex(reg));
+    return isAllocated(regToHandle(reg));
 }
 
 bool RegAlloc::hasFreeReg() const {
@@ -63,12 +63,12 @@ x86::X64Register RegAlloc::acquireAny() {
 
 void RegAlloc::freeReg(const x86::X64Register& reg) {
     assert(isAcquired(reg));
-    setReg(regToIdex(reg), false);
+    setReg(regToHandle(reg), false);
 }
 
 size_t RegAlloc::acquireSpecific(const x86::X64Register& reg) {
     assert(!isAcquired(reg));
-    auto res = regToIdex(reg);
+    auto res = regToHandle(reg);
     setReg(res, true);
 
     return res;
