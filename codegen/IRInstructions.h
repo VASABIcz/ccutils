@@ -514,30 +514,6 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct ReturnCompound: public NamedIrInstruction<"return_compound", CTX> {
-        PUB_VIRTUAL_COPY(ReturnCompound)
-
-        std::vector<SSARegisterHandle> parts;
-
-        explicit ReturnCompound(std::vector<SSARegisterHandle> parts): NamedIrInstruction<"return_compound", CTX>(SSARegisterHandle::invalid()), parts(std::move(parts)) {}
-
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            for (auto& s : parts) fn(s);
-        }
-
-        void generate(CTX::GEN&) override {
-            TODO()
-        }
-
-        void print(std::ostream& stream) override {
-            this->basePrint(stream, "{}", parts);
-        }
-
-        bool isTerminal() const override {return true;}
-    };
-
-    template<typename CTX>
     struct IntLiteral: public NamedIrInstruction<"int", CTX> {
         PUB_VIRTUAL_COPY(IntLiteral)
         size_t value;
