@@ -23,6 +23,7 @@ add_library(vi_codegen OBJECT
         BlockId.h
         CodeGenImpl.h
         JumpCondType.h
+        CFGPatcher.h
 )
 
 add_subdirectory(../gen64 build)
