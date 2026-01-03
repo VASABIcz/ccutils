@@ -26,8 +26,6 @@ add_library(vi_codegen OBJECT
         CFGPatcher.h
 )
 
-add_subdirectory(../gen64 build)
-
 add_library(vi_codegen_x86 OBJECT
         $<TARGET_OBJECTS:vi_codegen>
         $<TARGET_OBJECTS:gen64>
