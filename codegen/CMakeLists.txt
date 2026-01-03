@@ -37,6 +37,8 @@ add_library(vi_codegen_x86 OBJECT
         x86/RegAlloc.cpp
         x86/x86_insts.h
         x86/emit_x86.h
+        x86/spillStage.h
+        x86/decomposeStage.h
 )
 
 target_link_libraries(vi_codegen PRIVATE ccutils)
