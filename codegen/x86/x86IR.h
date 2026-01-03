@@ -1342,12 +1342,6 @@ struct Graph {
     std::vector<size_t> linearized;
 };
 
-//   XXX XXXXXXX XXX
-//1: XX
-//2:
-//3:             XX
-//4:     XXXX
-
 #define CHCK(n, type) if (type<CTX>* n = inst.template cst<type>(); n)
 
 struct BasePattern {
@@ -2037,5 +2031,7 @@ struct Lower {
             });
 
         matchCFG(cfg, rewrites.rules);
+
+        g.root = getBlockForId(cfg.root().id());
     }
 };
