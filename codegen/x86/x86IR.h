@@ -1416,7 +1416,7 @@ struct Lower {
     std::string name;
     Graph g;
 
-    Lower(std::shared_ptr<Logger> logger): g(logger) {
+    Lower(std::shared_ptr<Logger> logger = Logger::NOP()): g(logger) {
 
     }
 

@@ -18,14 +18,14 @@ struct Logger {
 
     virtual ~Logger() = default;
 
-    static Logger* NOP();
+    static std::shared_ptr<Logger> NOP();
 };
 
-class NOPLogger: Logger {
-    static NOPLogger* _the;
+class NOPLogger: public Logger {
+    static shared_ptr<NOPLogger> _the;
 public:
-    static NOPLogger* getInstance() {
-        if (_the == nullptr) _the = new NOPLogger();
+    static std::shared_ptr<NOPLogger> getInstance() {
+        if (_the == nullptr) _the = std::make_shared<NOPLogger>();
 
         return _the;
     }
@@ -33,8 +33,6 @@ public:
     void DEBUG(std::function<void ()> funk) override {}
 };
 
-NOPLogger* NOPLogger::_the = nullptr;
-
-Logger* Logger::NOP() {
+std::shared_ptr<Logger> Logger::NOP() {
     return NOPLogger::getInstance();
 }
