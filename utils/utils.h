@@ -76,6 +76,10 @@ void _fail(T msg) {
 
 #define FORMATED(...) (__VA_ARGS__)
 
+#define BETR_CASE(name, type)                                  \
+    if (auto __##name = inst.template cst<type>(); __##name) { \
+        auto name = __##name;
+
 consteval auto getMessage() {
     return "reached invalid point";
 }
