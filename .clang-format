@@ -1,0 +1,24 @@
+BasedOnStyle: LLVM
+UseTab: Never
+TabWidth: 4
+LambdaBodyIndentation: Signature
+ColumnLimit: 200
+IndentWidth: 4
+# Make sure arguments are placed on separate lines
+BinPackArguments: false
+AllowAllArgumentsOnNextLine: false
+# Separate type from identifier
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AlwaysBreakTemplateDeclarations: Yes
+SpaceAfterTemplateKeyword: false
+# Looks more readable, but for debugging you want new line
+AllowShortIfStatementsOnASingleLine: WithoutElse
+SpaceBeforeInheritanceColon: false
+SpaceBeforeRangeBasedForLoopColon: false
+AlignTrailingComments: true
+FixNamespaceComments: false
+StatementMacros:
+  - TODO
+  - UNREACHABLE
+  - PANIC
