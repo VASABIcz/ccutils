@@ -33,6 +33,8 @@ public:
     void DEBUG(std::function<void ()> funk) override {}
 };
 
+shared_ptr<NOPLogger> NOPLogger::_the{};
+
 std::shared_ptr<Logger> Logger::NOP() {
     return NOPLogger::getInstance();
 }
