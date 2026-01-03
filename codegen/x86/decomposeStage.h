@@ -37,7 +37,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                     for (auto i = 0UL; i < size / 8; i++) {
                         auto newDst = cfg.allocateDummy();
                         (*splitPtr)[load->target].push_back(newDst);
-                        ctx.patch<instructions::PointerLoad>(newDst, load->ptr, 8, load->offset + i * 8);
+                        ctx.template patch<instructions::PointerLoad>(newDst, load->ptr, 8, load->offset + i * 8);
                     }
                 });
             }
@@ -48,7 +48,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
 
             patcher.addPatch(store, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                 for (auto [i, arg]: (*splitPtr)[store->value] | views::enumerate) {
-                    ctx.patch<instructions::PointerStore>(store->ptr, arg, store->offset + (i * 8));
+                    ctx.template patch<instructions::PointerStore>(store->ptr, arg, store->offset + (i * 8));
                 }
             });
                 }
@@ -61,7 +61,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
     // assert(extract->size == 8); // for now assume 8B, we can support larger sizes in future
 
     patcher.addPatch(extract, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-        ctx.patch<instructions::Assign>(extract->target, (*splitPtr)[extract->subject][extract->offset / 8]);
+        ctx.template patch<instructions::Assign>(extract->target, (*splitPtr)[extract->subject][extract->offset / 8]);
     });
 }
 else BETR_CASE(phi, instructions::PhiFunction)
@@ -85,7 +85,7 @@ if (size > 8) {
 
     patcher.addPatch(ret, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
         assert((*splitPtr).at(ret->value).size() >= 2);
-        ctx.patch<instructions::ReturnCompound>((*splitPtr).at(ret->value));
+        ctx.template patch<instructions::ReturnCompound>((*splitPtr).at(ret->value));
     });
 }
 }
@@ -103,9 +103,9 @@ if (size > 8) {
             dummies.push_back(dummy);
         }
         for (auto dummy: dummies) {
-            ctx.patch<instructions::Dummy>(dummy);
+            ctx.template patch<instructions::Dummy>(dummy);
         }
-        ctx.patch<x86::inst::CallRIP2>(dummies, callRip->argz, callRip->id);
+        ctx.template patch<x86::inst::CallRIP2>(dummies, callRip->argz, callRip->id);
     });
 }
 }
@@ -119,7 +119,7 @@ if (size > 8) {
         for (auto i = 0ul; i < size; i += 8) {
             auto dummyReg = cfg.allocateDummy();
             (*splitPtr)[dummy->target].push_back(dummyReg);
-            ctx.patch<instructions::Dummy>(dummyReg);
+            ctx.template patch<instructions::Dummy>(dummyReg);
         }
     });
 }
