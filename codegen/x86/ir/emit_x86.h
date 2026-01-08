@@ -4,7 +4,11 @@
 #include "gen64/X86mc.h"
 #include "utils/Variant.h"
 #include "utils/dispatch.h"
-#include "x86IR.h"
+#include "instructions.hpp"
+#include "Graph.h"
+#include "X86Instruction.hpp"
+#include "Registers.hpp"
+#include "instructions.hpp"
 #include <any>
 
 struct EmitCtx {
