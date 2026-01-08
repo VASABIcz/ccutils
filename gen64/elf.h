@@ -37,6 +37,7 @@ struct ElfSymbol {
         None = 0,
         Object = 1,
         Func = 2,
+        Section = 3,
     };
 
     enum Bind : u8 {
@@ -358,6 +359,13 @@ struct ElfBuilder {
             symbols.push_back(sym);
         }
 
+        void putLocalSection(u32 name, u16 sectionId) {
+            assert(not isFreezed);
+            auto sym = ElfSymbol{(u32) name, (u8) ElfSymbol::Type::Section | ElfSymbol::Bind::Global, ElfSymbol::Other::Default, sectionId, 0, 0};
+
+            symbols.push_back(sym);
+        }
+
         void bind(ElfSection *sec, u32 stringsSection) {
             sec->type = ElfSection::Type::SYM_TABLE;
             sec->link = stringsSection;
@@ -384,8 +392,14 @@ struct ElfBuilder {
         }
     };
 
-    struct BytesBuilder {
-        std::vector <u8> bytes;
+    class BytesBuilder {
+        std::vector<u8> bytes;
+      public:
+        size_t append(std::span<u8> data) {
+            auto idex = bytes.size();
+            bytes.insert(bytes.end(), data.begin(), data.end());
+            return idex;
+        }
 
         void bind(ElfSection *sec, size_t align, size_t flags1) {
             sec->type = ElfSection::Type::ProgramBits;
