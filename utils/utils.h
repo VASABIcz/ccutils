@@ -1,33 +1,32 @@
 #pragma once
 
-#include <cassert>
-#include <fstream>
-#include <iostream>
-#include <map>
-#include <vector>
 #include <algorithm>
-#include <unordered_map>
-#include <set>
-#include <span>
-#include <functional>
-#include <ranges>
-#include <utility>
+#include <cassert>
 #include <chrono>
 #include <cmath>
+#include <fstream>
+#include <functional>
+#include <iostream>
+#include <map>
+#include <ranges>
+#include <set>
+#include <span>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "stringify.h"
 #include "Debuggable.h"
+#include "stringify.h"
 
-template<typename ...Args>
-void consume(Args... argz) {
-
-}
+template<typename... Args>
+void consume(Args... argz) {}
 
 using namespace std;
 
 struct Nothing {
-public:
+  public:
     Nothing() = default;
+
     ~Nothing() = default;
 };
 
@@ -40,31 +39,48 @@ void _fail(T msg) {
 }
 
 // #define TODO(msg, ...) {assert(false); fail()}
-#define TODO(...) {println("{} reached unimplement point", FAIL_FORMAT); std::terminate();}
-#define TODOF(...) cout << FAIL_FORMAT << endl; assert(false); consume(__VA_ARGS__)
-#define UNREACHABLEF(...) println("reached unreachable point at {} {}", FAIL_FORMAT, stringify(__VA_ARGS__)); std::unreachable()
-#define UNREACHABLE() {println("{} reached unreachable point at", FAIL_FORMAT); PANIC();}
+#define TODO(...)                                                                                                                                                                                      \
+    {                                                                                                                                                                                                  \
+        println("{} reached unimplement point", FAIL_FORMAT);                                                                                                                                          \
+        std::terminate();                                                                                                                                                                              \
+    }
+#define TODOF(...)                                                                                                                                                                                     \
+    cout << FAIL_FORMAT << endl;                                                                                                                                                                       \
+    assert(false);                                                                                                                                                                                     \
+    consume(__VA_ARGS__)
+#define UNREACHABLEF(...)                                                                                                                                                                              \
+    println("reached unreachable point at {} {}", FAIL_FORMAT, stringify(__VA_ARGS__));                                                                                                                \
+    std::unreachable()
+#define UNREACHABLE()                                                                                                                                                                                  \
+    {                                                                                                                                                                                                  \
+        println("{} reached unreachable point at", FAIL_FORMAT);                                                                                                                                       \
+        PANIC();                                                                                                                                                                                       \
+    }
 
 #define FIRST(lmao, ...) lmao
-#define ARGS_OR_DEFAULT(DEFAULT, ...) FIRST(__VA_OPT__(__VA_ARGS__,) DEFAULT)
-#define PANIC(msg, ...) {println("[{}] {}:{}\n-> " ARGS_OR_DEFAULT("reached invalid point", msg), __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__); std::terminate();}
+#define ARGS_OR_DEFAULT(DEFAULT, ...) FIRST(__VA_ARGS__ __VA_OPT__(,) DEFAULT)
+#define PANIC(msg, ...)                                                                                                                                                                                \
+    {                                                                                                                                                                                                  \
+        println("[{}] {}:{}\n-> " ARGS_OR_DEFAULT("reached invalid point", msg), __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);                                                                     \
+        std::terminate();                                                                                                                                                                              \
+    }
 
 #define GET_FIRST_HELPER(first, ...) first
 #define DROP_FIRST_HELPER(first, ...) __VA_ARGS__
 #define GET_FIRST(...) GET_FIRST_HELPER(__VA_ARGS__)
 #define DROP_FIRST(...) DROP_FIRST_HELPER(__VA_ARGS__)
 
-#define swap10(a, ...) __VA_ARGS__ __VA_OPT__(,) a
-#define swap9(a, ...) swap10(__VA_ARGS__) __VA_OPT__(,) a
-#define swap8(a, ...) swap9(__VA_ARGS__) __VA_OPT__(,) a
-#define swap7(a, ...) swap8(__VA_ARGS__) __VA_OPT__(,) a
-#define swap6(a, ...) swap7(__VA_ARGS__) __VA_OPT__(,) a
-#define swap5(a, ...) swap6(__VA_ARGS__) __VA_OPT__(,) a
-#define swap4(a, ...) swap5(__VA_ARGS__) __VA_OPT__(,) a
-#define swap3(a, ...) swap4(__VA_ARGS__) __VA_OPT__(,) a
-#define swap2(a, ...) swap3(__VA_ARGS__) __VA_OPT__(,) a
-#define swap1(a, ...) swap2(__VA_ARGS__) __VA_OPT__(,) a
-#define swap0(a, ...) swap1(__VA_ARGS__) __VA_OPT__(,) a
+#define swap10(a, ...) __VA_ARGS__ __VA_OPT__(, ) a
+#define swap9(a, ...) swap10(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap8(a, ...) swap9(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap7(a, ...) swap8(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap6(a, ...) swap7(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap5(a, ...) swap6(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap4(a, ...) swap5(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap3(a, ...) swap4(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap2(a, ...) swap3(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap1(a, ...) swap2(__VA_ARGS__) __VA_OPT__(, ) a
+#define swap0(a, ...) swap1(__VA_ARGS__) __VA_OPT__(, ) a
 #define REVERSE(...) swap0(__VA_ARGS__)
 
 #define apply4(funk, ...) __VA_OPT__(funk(GET_FIRST(__VA_ARGS__)))
@@ -76,8 +92,8 @@ void _fail(T msg) {
 
 #define FORMATED(...) (__VA_ARGS__)
 
-#define BETR_CASE(name, type)                                  \
-    if (auto __##name = inst.template cst<type>(); __##name) { \
+#define BETR_CASE(name, type)                                                                                                                                                                          \
+    if (auto __##name = inst.template cst<type>(); __##name) {                                                                                                                                         \
         auto name = __##name;
 
 consteval auto getMessage() {
@@ -89,33 +105,88 @@ consteval auto getMessage(auto pepa) {
 }
 
 consteval auto pepa(string a, string b) {
-    return a+b;
+    return a + b;
 }
 
 namespace std {
-    template<typename T = void>
-    void move() {
-
-    }
+template<typename T = void>
+void move() {}
 }
 
-#define DEBUG_INFO(name) public: [[nodiscard]] const string_view className() const override {return #name;} private:
+#define DEBUG_INFO(name)                                                                                                                                                                               \
+  public:                                                                                                                                                                                              \
+    [[nodiscard]] const string_view className() const override {                                                                                                                                       \
+        return #name;                                                                                                                                                                                  \
+    }                                                                                                                                                                                                  \
+                                                                                                                                                                                                       \
+  private:
 
-#define DEBUG_INFO2(name) [[nodiscard]] const string_view className() const override {return #name;}
+#define DEBUG_INFO2(name)                                                                                                                                                                              \
+    [[nodiscard]] const string_view className() const override {                                                                                                                                       \
+        return #name;                                                                                                                                                                                  \
+    }
 
-#define TRY(...) ({auto _it = __VA_ARGS__; if (!_it.has_value()) return unexpected(std::move(_it.error())); std::move(*_it); })
-#define TRYNULL(x) ({auto _it = x; if (!_it.has_value()) return nullptr; std::move(*_it); })
-#define TRYA(x) ({auto _it = x; if (!_it.has_value()) return Err(std::move(_it.error())); *_it; })
-#define TRYV(x) {auto _it = x; if (!_it.has_value()) return Err(std::move(_it.error()));}
-#define TRY_MAP(x, y) ({auto _it = x; if (!_it.has_value()) { auto _err = std::move(_it.error()); return y; }; std::move(*_it); })
-#define TRYV_MAP(x, y) ({auto _it = x; if (!_it.has_value()) { auto _err = std::move(_it.error()); return y; }; })
+#define TRY(...)                                                                                                                                                                                       \
+    ({                                                                                                                                                                                                 \
+        auto _it = __VA_ARGS__;                                                                                                                                                                        \
+        if (!_it.has_value()) return unexpected(std::move(_it.error()));                                                                                                                               \
+        std::move(*_it);                                                                                                                                                                               \
+    })
+#define TRYNULL(x)                                                                                                                                                                                     \
+    ({                                                                                                                                                                                                 \
+        auto _it = x;                                                                                                                                                                                  \
+        if (!_it.has_value()) return nullptr;                                                                                                                                                          \
+        std::move(*_it);                                                                                                                                                                               \
+    })
+#define TRYA(x)                                                                                                                                                                                        \
+    ({                                                                                                                                                                                                 \
+        auto _it = x;                                                                                                                                                                                  \
+        if (!_it.has_value()) return Err(std::move(_it.error()));                                                                                                                                      \
+        *_it;                                                                                                                                                                                          \
+    })
+#define TRYV(x)                                                                                                                                                                                        \
+    {                                                                                                                                                                                                  \
+        auto _it = x;                                                                                                                                                                                  \
+        if (!_it.has_value()) return Err(std::move(_it.error()));                                                                                                                                      \
+    }
+#define TRY_MAP(x, y)                                                                                                                                                                                  \
+    ({                                                                                                                                                                                                 \
+        auto _it = x;                                                                                                                                                                                  \
+        if (!_it.has_value()) {                                                                                                                                                                        \
+            auto _err = std::move(_it.error());                                                                                                                                                        \
+            return y;                                                                                                                                                                                  \
+        };                                                                                                                                                                                             \
+        std::move(*_it);                                                                                                                                                                               \
+    })
+#define TRYV_MAP(x, y)                                                                                                                                                                                 \
+    ({                                                                                                                                                                                                 \
+        auto _it = x;                                                                                                                                                                                  \
+        if (!_it.has_value()) {                                                                                                                                                                        \
+            auto _err = std::move(_it.error());                                                                                                                                                        \
+            return y;                                                                                                                                                                                  \
+        };                                                                                                                                                                                             \
+    })
 
-#define UNWRAPV(...) ({auto _it = __VA_ARGS__; auto _ctx = ExceptionContext{}; if (!_it.has_value()) PANIC("{}", _it.error()->message(_ctx))})
-#define UNWRAP(...) ({auto _it1 = __VA_ARGS__; if (!_it1.has_value()) PANIC(); std::move(*_it1); })
+#define UNWRAPV(...)                                                                                                                                                                                   \
+    ({                                                                                                                                                                                                 \
+        auto _it = __VA_ARGS__;                                                                                                                                                                        \
+        auto _ctx = ExceptionContext{};                                                                                                                                                                \
+        if (!_it.has_value()) PANIC("{}", _it.error()->message(_ctx))                                                                                                                                  \
+    })
+#define UNWRAP(...)                                                                                                                                                                                    \
+    ({                                                                                                                                                                                                 \
+        auto _it1 = __VA_ARGS__;                                                                                                                                                                       \
+        if (!_it1.has_value()) PANIC();                                                                                                                                                                \
+        std::move(*_it1);                                                                                                                                                                              \
+    })
 
-#define SHORT(x) ({ if (!x.has_value()) return; *x })
+#define SHORT(x)                                                                                                                                                                                       \
+    ({                                                                                                                                                                                                 \
+        if (!x.has_value()) return;                                                                                                                                                                    \
+        *x                                                                                                                                                                                             \
+    })
 #define repeat1(n) for (auto it = (size_t)0; it < n; it++)
-#define PRINTW(n) cout << string((n)*2, ' ')
+#define PRINTW(n) cout << string((n) * 2, ' ')
 // #define IFD if (DEBUG)
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -134,19 +205,19 @@ inline void resetColor(auto&& s) {
     s << "\033[39m\033[49m";
 }
 
-constexpr u8 operator ""_u8(unsigned long long value) {
+constexpr u8 operator""_u8(unsigned long long value) {
     return static_cast<u8>(value);
 }
 
-constexpr u16 operator ""_u16(unsigned long long value) {
+constexpr u16 operator""_u16(unsigned long long value) {
     return static_cast<u16>(value);
 }
 
-constexpr u32 operator ""_u32(unsigned long long value) {
+constexpr u32 operator""_u32(unsigned long long value) {
     return static_cast<u32>(value);
 }
 
-constexpr u64 operator ""_u64(unsigned long long value) {
+constexpr u64 operator""_u64(unsigned long long value) {
     return static_cast<u64>(value);
 }
 
@@ -157,7 +228,7 @@ void writeBytesToFile(const string& name, auto data) {
     ofstream fajl;
     fajl.open(name, ios::binary | ios::out);
 
-    fajl.write(reinterpret_cast<const char *>(data.data()), data.size()*sizeof(typename decltype(data)::value_type));
+    fajl.write(reinterpret_cast<const char*>(data.data()), data.size() * sizeof(typename decltype(data)::value_type));
 
     fajl.close();
 }
@@ -167,7 +238,7 @@ string writeBytesToTempFile(auto data, string_view plus = "") {
 
     string fileName = stringify("/tmp/{}{}", r ^ (r >> 1), plus);
     writeBytesToFile(fileName, data);
-    
+
     return fileName;
 }
 
@@ -185,7 +256,7 @@ bool allOf(const auto& vec, auto fn) {
     return true;
 }
 
-template<typename ...T>
+template<typename... T>
 constexpr auto haveValues(const optional<T>&... options) {
     auto idk = {options...};
     return std::ranges::all_of(idk.begin(), idk.end(), [](const auto& it) { return it.has_value(); });
@@ -205,26 +276,25 @@ auto escape(auto str) {
 
     for (auto c : str) {
         switch (c) {
-            case '\n':
-                escaped += "\\n";
-                break;
-            case '\r':
-                escaped += "\\r";
-                break;
-            case '\t':
-                escaped += "\\t";
-                break;
-            case '\e':
-                escaped += "\\e";
-                break;
-            default:
-                escaped += c;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        case '\e':
+            escaped += "\\e";
+            break;
+        default:
+            escaped += c;
         }
     }
 
     return escaped;
 }
-
 
 inline optional<string> unescape(string_view value) {
     string unescaped;
@@ -233,32 +303,25 @@ inline optional<string> unescape(string_view value) {
         auto c = value[i];
 
         if (c == '\\') {
-            if (i+1 >= value.size()) return {};
+            if (i + 1 >= value.size()) return {};
             auto next = value[++i];
 
             if (next == 'n') {
                 unescaped += '\n';
-            }
-            else if (next == 't') {
+            } else if (next == 't') {
                 unescaped += '\t';
-            }
-            else if (next == 'r') {
+            } else if (next == 'r') {
                 unescaped += '\r';
-            }
-            else if (next == 'e') {
+            } else if (next == 'e') {
                 unescaped += '\e';
-            }
-            else if (next == '\\') {
+            } else if (next == '\\') {
                 unescaped += '\\';
-            }
-            else if (next == '0') {
+            } else if (next == '0') {
                 unescaped += (char)0;
-            }
-            else {
+            } else {
                 unescaped += next;
             }
-        }
-        else {
+        } else {
             unescaped += c;
         }
     }
@@ -269,7 +332,8 @@ inline optional<string> unescape(string_view value) {
 template<typename T, typename... Args>
 auto getFirType() -> T;
 
-template<int N, typename... Ts> using nThType = typename std::tuple_element<N, std::tuple<Ts...>>::type;
+template<int N, typename... Ts>
+using nThType = typename std::tuple_element<N, std::tuple<Ts...>>::type;
 
 template<typename T>
 bool isTheSame(const vector<T>& items) {
@@ -277,7 +341,7 @@ bool isTheSame(const vector<T>& items) {
 
     const auto& firstItem = items[0];
 
-    return std::ranges::all_of(items.begin(), items.end(), [&](const auto& it){ return it == firstItem; });
+    return std::ranges::all_of(items.begin(), items.end(), [&](const auto& it) { return it == firstItem; });
 }
 
 template<typename T>
@@ -286,7 +350,7 @@ bool isTheSameOr(const vector<T>& items, T other) {
 
     const auto& firstItem = items[0];
 
-    return std::ranges::all_of(items.begin(), items.end(), [&](const auto& it){ return it == firstItem || it == other; });
+    return std::ranges::all_of(items.begin(), items.end(), [&](const auto& it) { return it == firstItem || it == other; });
 }
 
 template<typename T>
@@ -321,7 +385,7 @@ struct Destroyable {
 
     Destroyable& operator=(const Destroyable& other) = delete;
 
-    Destroyable(optional<T> inner, std::function<void(T)> fun): inner(std::move(inner)), dest(std::move(fun)) {}
+    Destroyable(optional<T> inner, std::function<void(T)> fun) : inner(std::move(inner)), dest(std::move(fun)) {}
 
     ~Destroyable() {
         if (dest) {
@@ -338,11 +402,7 @@ auto makeDestroyable(T value, auto fn) {
 template<typename T>
 using Predicate = std::function<bool(T)>;
 
-
-enum class Flow {
-    CONTINUE,
-    BREAK
-};
+enum class Flow { CONTINUE, BREAK };
 
 template<typename T>
 using Visitor = std::function<Flow(T)>;
@@ -373,9 +433,7 @@ template<typename T>
 struct Cleanup {
     T fn;
 
-    ~Cleanup() {
-        fn();
-    }
+    ~Cleanup() { fn(); }
 };
 
 template<typename T>
@@ -391,7 +449,7 @@ auto byteSpan(T& v) -> span<u8, sizeof(T)> {
 static size_t quickHash(span<u8> data) {
     size_t hash = 0;
 
-    for (u8 byte: data) {
+    for (u8 byte : data) {
         hash += (byte ^ data.size()) * 31;
     }
 
@@ -399,7 +457,7 @@ static size_t quickHash(span<u8> data) {
 }
 
 static bool quickCmp(span<u8> a, span<u8> b) {
-    for (auto [c1, c2]: views::zip(a, b)) {
+    for (auto [c1, c2] : views::zip(a, b)) {
         if (c1 != c2) return false;
     }
 
@@ -408,7 +466,7 @@ static bool quickCmp(span<u8> a, span<u8> b) {
 
 inline constexpr size_t align(size_t value, size_t amount) {
     if (value % amount == 0) return value;
-    return ((value / amount)*amount) + amount;
+    return ((value / amount) * amount) + amount;
 }
 
 inline constexpr size_t alignFix(size_t value, size_t amount) {
@@ -428,17 +486,17 @@ inline string randomString() {
 }
 
 #define KB 1024
-#define MB (1024*KB)
-#define GB (1024*MB)
+#define MB (1024 * KB)
+#define GB (1024 * MB)
 
 namespace vipl {
-    auto max(auto a, auto b) {
-        return a > b ? a : b;
-    }
+auto max(auto a, auto b) {
+    return a > b ? a : b;
+}
 
-    auto min(auto a, auto b) {
-        return a > b ? a : b;
-    }
+auto min(auto a, auto b) {
+    return a > b ? a : b;
+}
 }
 
 using namespace std::literals;
@@ -447,8 +505,10 @@ struct string_hash {
     using hash_type = std::hash<std::string_view>;
     using is_transparent = void;
 
-    std::size_t operator()(const char* str) const        { return hash_type{}(str); }
-    std::size_t operator()(std::string_view str) const   { return hash_type{}(str); }
+    std::size_t operator()(const char* str) const { return hash_type{}(str); }
+
+    std::size_t operator()(std::string_view str) const { return hash_type{}(str); }
+
     std::size_t operator()(std::string const& str) const { return hash_type{}(str); }
 };
 
@@ -469,7 +529,6 @@ inline long stringToLong(const char* str, bool& fail, int base = 10) {
 
 const constexpr size_t SIZET_MAX = ~static_cast<size_t>(0);
 
-
 inline size_t indexOf(auto& cont, auto value) {
     for (auto i : views::iota(0u, cont.size())) {
         if (cont[i] == value) return i;
@@ -481,7 +540,7 @@ inline size_t difference(size_t a, size_t b) {
     auto ma = max(a, b);
     auto mi = min(a, b);
 
-    return ma-mi;
+    return ma - mi;
 }
 
 inline bool contains(auto& cont, auto v) {
@@ -489,7 +548,7 @@ inline bool contains(auto& cont, auto v) {
 }
 
 template<typename FN>
-struct Find : std::ranges::range_adaptor_closure<Find<FN>> {
+struct Find: std::ranges::range_adaptor_closure<Find<FN>> {
     FN func;
 
     template<typename IN1>
@@ -502,7 +561,7 @@ struct Find : std::ranges::range_adaptor_closure<Find<FN>> {
 };
 
 template<typename FN>
-struct FindIndex : std::ranges::range_adaptor_closure<Find<FN>> {
+struct FindIndex: std::ranges::range_adaptor_closure<Find<FN>> {
     FN func;
 
     template<typename IN1>
@@ -515,7 +574,7 @@ struct FindIndex : std::ranges::range_adaptor_closure<Find<FN>> {
 };
 
 template<typename FN>
-struct Any : std::ranges::range_adaptor_closure<Any<FN>> {
+struct Any: std::ranges::range_adaptor_closure<Any<FN>> {
     FN func;
 
     template<typename IN1>
@@ -528,7 +587,7 @@ struct Any : std::ranges::range_adaptor_closure<Any<FN>> {
 };
 
 template<typename FN>
-struct All : std::ranges::range_adaptor_closure<All<FN>> {
+struct All: std::ranges::range_adaptor_closure<All<FN>> {
     FN func;
 
     template<typename IN1>
@@ -563,7 +622,7 @@ struct ToSet: std::ranges::range_adaptor_closure<ToSet> {
 };
 
 template<typename FN>
-struct None : std::ranges::range_adaptor_closure<None<FN>> {
+struct None: std::ranges::range_adaptor_closure<None<FN>> {
     FN func;
 
     template<typename IN1>
@@ -576,7 +635,7 @@ struct None : std::ranges::range_adaptor_closure<None<FN>> {
 };
 
 template<typename FN>
-struct _Map : std::ranges::range_adaptor_closure<_Map<FN>> {
+struct _Map: std::ranges::range_adaptor_closure<_Map<FN>> {
     FN func;
 
     template<typename IN1>
@@ -589,7 +648,7 @@ struct _Map : std::ranges::range_adaptor_closure<_Map<FN>> {
 };
 
 template<typename FN>
-struct Elvis : std::ranges::range_adaptor_closure<Elvis<FN>> {
+struct Elvis: std::ranges::range_adaptor_closure<Elvis<FN>> {
     FN func;
 
     template<typename IN1>
@@ -602,49 +661,53 @@ struct Elvis : std::ranges::range_adaptor_closure<Elvis<FN>> {
 };
 
 namespace vi {
-    template<typename T>
-    auto makeFind(T fn) {
-        return Find<T>{.func=fn};
-    }
+template<typename T>
+auto makeFind(T fn) {
+    return Find<T>{.func = fn};
+}
 
-    template<template<typename C> typename A, typename T>
-    auto maker(T&& fn) {
-        return A<T>{.func=fn};
-    }
+template<template<typename C> typename A, typename T>
+auto maker(T&& fn) {
+    return A<T>{.func = fn};
+}
 
-    template<typename T>
-    auto find(T&& v) {
-        return Find<T>{.func=v};
-    }
+template<typename T>
+auto find(T&& v) {
+    return Find<T>{.func = v};
+}
 
-    inline ToVector toVec = ToVector{};
-    inline ToSet toSet = ToSet{};
+inline ToVector toVec = ToVector{};
+inline ToSet toSet = ToSet{};
 
-    template<typename T>
-    auto findIndex(T&& v) {
-        return FindIndex<T>{.func=v};
-    }
+template<typename T>
+auto findIndex(T&& v) {
+    return FindIndex<T>{.func = v};
+}
 
-    template<typename T>
-    auto any(T&& v) {
-        return Any<T>{.func=v};
-    }
-    template<typename T>
-    auto all(T&& v) {
-        return All<T>{.func=std::forward<T>(v)};
-    }
-    template<typename T>
-    auto none(T&& v) {
-        return None<T&&>{.func=std::forward<T>(v)};
-    }
-    template<typename T>
-    auto map(T&& v) {
-        return _Map<T>{.func=v};
-    }
-    template<typename T>
-    auto map_null(T&& v) {
-        return Elvis<T>{.func=v};
-    }
+template<typename T>
+auto any(T&& v) {
+    return Any<T>{.func = v};
+}
+
+template<typename T>
+auto all(T&& v) {
+    return All<T>{.func = std::forward<T>(v)};
+}
+
+template<typename T>
+auto none(T&& v) {
+    return None<T&&>{.func = std::forward<T>(v)};
+}
+
+template<typename T>
+auto map(T&& v) {
+    return _Map<T>{.func = v};
+}
+
+template<typename T>
+auto map_null(T&& v) {
+    return Elvis<T>{.func = v};
+}
 }
 
 template<typename T, typename... Other>
@@ -668,17 +731,16 @@ bool canFit(T value, u64 bits) {
         u64 zero = 0;
         auto idk = static_cast<i64>(1) << 63;
 
-        i64 min = idk >> (64-bits);
-        i64 max = bit_cast<i64>(~zero >> (65-bits));
+        i64 min = idk >> (64 - bits);
+        i64 max = bit_cast<i64>(~zero >> (65 - bits));
 
         // cout << "WTF: " << min << " " << max << endl;
 
         return value >= min && value <= max;
-    }
-    else {
+    } else {
         u64 max = 0;
         max = ~max;
-        max = max >> (64-bits);
+        max = max >> (64 - bits);
         return value <= max;
     }
 }
@@ -692,7 +754,6 @@ inline string readFile(const string& filePath) {
 
     return data.str();
 }
-
 
 #define vi_map(pepa) vi::map([](auto&& it) pepa)
 #define vi_find(pepa) vi::find([](auto&& it) pepa)
@@ -718,7 +779,7 @@ constexpr static size_t numberOfOnes(size_t c) {
     return ones;
 }
 
-constexpr size_t SIZE_T_BITS = sizeof(size_t)*8;
+constexpr size_t SIZE_T_BITS = sizeof(size_t) * 8;
 
 constexpr string safeSymbol(string_view in) {
     string out;
@@ -728,8 +789,7 @@ constexpr string safeSymbol(string_view in) {
                 out += '$';
             }
             out += '_';
-        }
-        else {
+        } else {
             out += c;
         }
     }
@@ -737,15 +797,16 @@ constexpr string safeSymbol(string_view in) {
 }
 
 class Profile {
-public:
-    void trace(const std::string &msg) {
+  public:
+    void trace(const std::string& msg) {
         auto now = std::chrono::steady_clock::now();
         long long diff_us = 0;
         diff_us = std::chrono::duration_cast<std::chrono::microseconds>(now - prev_).count();
         prev_ = now;
         std::cout << msg << " +" << diff_us << "us\n";
     }
-private:
+
+  private:
     std::chrono::steady_clock::time_point prev_ = std::chrono::steady_clock::now();
 };
 
@@ -754,9 +815,12 @@ inline std::string to_lower(std::string s) {
     return s;
 }
 
-
 #ifdef __clang__
-#define STACK_BASE_ADDRESS() ({auto stuff = 0; &stuff;})
+#define STACK_BASE_ADDRESS()                                                                                                                                                                           \
+    ({                                                                                                                                                                                                 \
+        auto stuff = 0;                                                                                                                                                                                \
+        &stuff;                                                                                                                                                                                        \
+    })
 #else
 #define STACK_BASE_ADDRESS() __builtin_stack_address()
 #endif
