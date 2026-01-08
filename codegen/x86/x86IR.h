@@ -4,12 +4,15 @@
 #include "codegen/IRInstruction.h"
 #include "codegen/IRInstructions.h"
 #include "codegen/SSARegisterHandle.h"
+#include "gen64/definitions.h"
+#include "utils/Logger.h"
+#include "utils/Variant.h"
 #include "utils/utils.h"
 #include "x86_insts.h"
-#include "gen64/definitions.h"
+#include "codegen/InstructionMatcher.hpp"
+#include "utils/BetterSpan.h"
 #include <chrono>
 #include <cstddef>
-#include "utils/Logger.h"
 
 struct BaseRegister {
     virtual ~BaseRegister() = default;
@@ -27,31 +30,21 @@ struct BaseRegister {
     virtual std::string toString() const = 0;
 };
 
-struct Physical : BaseRegister {
+struct Physical: BaseRegister {
     x86::X64Register id;
     Physical(x86::X64Register id) : id(id) {}
 
-    std::string toString() const override {
-        return id.toString();
-    }
+    std::string toString() const override { return id.toString(); }
 };
 
-struct Virtual : BaseRegister {
+struct Virtual: BaseRegister {
     size_t id;
     Virtual(size_t id) : id(id) {}
 
-    std::string toString() const override {
-        return stringify("v{}", id);
-    }
+    std::string toString() const override { return stringify("v{}", id); }
 };
 
-/*struct Immediate: BaseRegister {};
-
-struct StackRef: BaseRegister {};
-
-struct RipRef: BaseRegister {};*/
-
-struct X86Instruction : Debuggable {
+struct X86Instruction: Debuggable {
     std::vector<BaseRegister*> uses;
     std::vector<BaseRegister*> defs;
     std::vector<BaseRegister*> kills;
@@ -69,13 +62,13 @@ struct X86Instruction : Debuggable {
     }
 
     void rewriteDef(Virtual* old, Virtual* newReg) {
-        for (auto& def : defs) {
+        for (auto& def: defs) {
             if (def->is<Virtual>() && def->as<Virtual>()->id == old->id) def = newReg;
         }
     }
 
     void rewriteUse(Virtual* old, Virtual* newReg) {
-        for (auto& def : uses) {
+        for (auto& def: uses) {
             if (def->is<Virtual>() && def->as<Virtual>()->id == old->id) def = newReg;
         }
     }
@@ -99,60 +92,57 @@ struct X86Instruction : Debuggable {
     }
 
     template<typename T>
-    bool is()  {
+    bool is() {
         return dynamic_cast<T*>(this) != nullptr;
     }
 };
 
-struct RET : X86Instruction {
+struct RET: X86Instruction {
     DEBUG_INFO2(RET)
-    RET(std::initializer_list<BaseRegister*> uses) {
-        this->uses = uses;
-    }
+    RET(std::initializer_list<BaseRegister*> uses) { this->uses = uses; }
 };
 
-struct FAKE_DEF : X86Instruction {
+struct FAKE_DEF: X86Instruction {
     DEBUG_INFO2(FAKE_DEF)
-    FAKE_DEF(BaseRegister* def) {
-        this->defs.push_back(def);
-    }
+    FAKE_DEF(BaseRegister* def) { this->defs.push_back(def); }
 };
 
-struct FAKE_USE : X86Instruction {
+struct FAKE_USE: X86Instruction {
     DEBUG_INFO2(FAKE_USE)
-    FAKE_USE(BaseRegister* def) {
-        this->uses.push_back(def);
-    }
+    FAKE_USE(BaseRegister* def) { this->uses.push_back(def); }
 };
 
-struct CALLRIP : X86Instruction {
+struct CALLRIP: X86Instruction {
     DEBUG_INFO2(CALLRIP)
-    CALLRIP(std::initializer_list<BaseRegister*> defs, std::initializer_list<BaseRegister*> uses, std::initializer_list<BaseRegister*> kills, size_t id) {
+    size_t id;
+
+/*    CALLRIP(std::initializer_list<BaseRegister*> defs, std::initializer_list<BaseRegister*> uses, std::initializer_list<BaseRegister*> kills, size_t id): id(id) {
         this->defs = defs;
         this->kills = kills;
         this->uses = uses;
-    }
+    }*/
 
-    CALLRIP(std::span<BaseRegister*> defs, std::span<BaseRegister*> uses, std::span<BaseRegister*> kills, size_t id) {
+    CALLRIP(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills, size_t id): id(id) {
         this->defs = std::vector<BaseRegister*>{defs.begin(), defs.end()};
         this->kills = std::vector<BaseRegister*>{kills.begin(), kills.end()};
         this->uses = std::vector<BaseRegister*>{uses.begin(), uses.end()};
     }
 };
 
-struct CALLREG : X86Instruction {
+struct CALLREG: X86Instruction {
     DEBUG_INFO2(CALLREG)
 
     BaseRegister* reg = nullptr;
 
-    CALLREG(std::initializer_list<BaseRegister*> defs, std::initializer_list<BaseRegister*> uses, std::initializer_list<BaseRegister*> kills, BaseRegister* reg): reg(reg) {
+/*    CALLREG(std::initializer_list<BaseRegister*> defs, std::initializer_list<BaseRegister*> uses, std::initializer_list<BaseRegister*> kills, BaseRegister* reg) : reg(reg) {
+        defs.b
         this->defs = defs;
         this->kills = kills;
         this->uses = uses;
         this->uses.push_back(reg);
-    }
+    }*/
 
-    CALLREG(std::span<BaseRegister*> defs, std::span<BaseRegister*> uses, std::span<BaseRegister*> kills, BaseRegister* reg): reg(reg) {
+    CALLREG(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills, BaseRegister* reg) : reg(reg) {
         this->defs = std::vector<BaseRegister*>{defs.begin(), defs.end()};
         this->kills = std::vector<BaseRegister*>{kills.begin(), kills.end()};
         this->uses = std::vector<BaseRegister*>{uses.begin(), uses.end()};
@@ -160,15 +150,13 @@ struct CALLREG : X86Instruction {
     }
 };
 
-struct MOVRIP : X86Instruction {
+struct MOVRIP: X86Instruction {
     DEBUG_INFO2(MOVRIP)
     size_t id;
-    MOVRIP(BaseRegister* dst, size_t id): id(id) {
-        this->defs.push_back(dst);
-    }
+    MOVRIP(BaseRegister* dst, size_t id) : id(id) { this->defs.push_back(dst); }
 };
 
-struct MOV : X86Instruction {
+struct MOV: X86Instruction {
     DEBUG_INFO2(MOV)
     MOV(BaseRegister* lhs, BaseRegister* rhs) {
         this->defs.push_back(lhs);
@@ -176,16 +164,35 @@ struct MOV : X86Instruction {
     }
 };
 
-struct MOVIMM : X86Instruction {
-    DEBUG_INFO2(MOVIMM)
-    uint64_t value;
-
-    MOVIMM(BaseRegister* lhs, uint64_t value): value(value) {
-        this->defs.push_back(lhs);
+struct LEAVE: X86Instruction {
+    DEBUG_INFO2(LEAVE)
+    LEAVE() {
+        // FIXME do we def esp/ebp here?
     }
 };
 
-struct MUL : X86Instruction {
+struct PUSH: X86Instruction {
+    DEBUG_INFO2(PUSH)
+    PUSH(BaseRegister* value) {
+        this->uses.push_back(value);
+    }
+};
+
+struct POP: X86Instruction {
+    DEBUG_INFO2(POP)
+    POP(BaseRegister* dst) {
+        this->defs.push_back(dst);
+    }
+};
+
+struct MOVIMM: X86Instruction {
+    DEBUG_INFO2(MOVIMM)
+    uint64_t value;
+
+    MOVIMM(BaseRegister* lhs, uint64_t value) : value(value) { this->defs.push_back(lhs); }
+};
+
+struct MUL: X86Instruction {
     DEBUG_INFO2(MUL)
     MUL(BaseRegister* lhs, BaseRegister* rhs) {
         this->defs.push_back(lhs);
@@ -194,7 +201,7 @@ struct MUL : X86Instruction {
     }
 };
 
-struct SUB : X86Instruction {
+struct SUB: X86Instruction {
     DEBUG_INFO2(SUB)
     SUB(BaseRegister* lhs, BaseRegister* rhs) {
         this->defs.push_back(lhs);
@@ -203,7 +210,7 @@ struct SUB : X86Instruction {
     }
 };
 
-struct ADD : X86Instruction {
+struct ADD: X86Instruction {
     DEBUG_INFO2(ADD)
     ADD(BaseRegister* lhs, BaseRegister* rhs) {
         this->defs.push_back(lhs);
@@ -212,7 +219,7 @@ struct ADD : X86Instruction {
     }
 };
 
-struct XOR : X86Instruction {
+struct XOR: X86Instruction {
     DEBUG_INFO2(XOR)
     XOR(BaseRegister* lhs, BaseRegister* rhs) {
         this->defs.push_back(lhs);
@@ -221,7 +228,7 @@ struct XOR : X86Instruction {
     }
 };
 
-struct AND : X86Instruction {
+struct AND: X86Instruction {
     DEBUG_INFO2(AND)
     AND(BaseRegister* lhs, BaseRegister* rhs) {
         this->defs.push_back(lhs);
@@ -239,23 +246,23 @@ struct OR: X86Instruction {
     }
 };
 
-struct ADDIMM : X86Instruction {
+struct ADDIMM: X86Instruction {
     DEBUG_INFO2(ADDIMM)
 
     long imm;
 
-    ADDIMM(BaseRegister* lhs, long imm): imm(imm) {
+    ADDIMM(BaseRegister* lhs, long imm) : imm(imm) {
         this->defs.push_back(lhs);
         this->uses.push_back(lhs);
     }
 };
 
-struct SUBIMM : X86Instruction {
+struct SUBIMM: X86Instruction {
     DEBUG_INFO2(SUBIMM)
 
     long imm;
 
-    SUBIMM(BaseRegister* lhs, long imm): imm(imm) {
+    SUBIMM(BaseRegister* lhs, long imm) : imm(imm) {
         this->defs.push_back(lhs);
         this->uses.push_back(lhs);
     }
@@ -263,13 +270,13 @@ struct SUBIMM : X86Instruction {
 
 struct Block;
 
-struct JMP : X86Instruction {
+struct JMP: X86Instruction {
     DEBUG_INFO2(JMP)
     Block* tgt;
-    JMP(Block* tgt): tgt(tgt) {}
+    JMP(Block* tgt) : tgt(tgt) {}
 };
 
-struct CMP : X86Instruction {
+struct CMP: X86Instruction {
     DEBUG_INFO2(CMP)
     CMP(BaseRegister* lhs, BaseRegister* rhs) {
         this->uses.push_back(lhs);
@@ -277,7 +284,7 @@ struct CMP : X86Instruction {
     }
 };
 
-struct TEST : X86Instruction {
+struct TEST: X86Instruction {
     DEBUG_INFO2(TEST)
     TEST(BaseRegister* lhs, BaseRegister* rhs) {
         this->uses.push_back(lhs);
@@ -285,7 +292,7 @@ struct TEST : X86Instruction {
     }
 };
 
-struct CQO : X86Instruction {
+struct CQO: X86Instruction {
     DEBUG_INFO2(CQO)
     CQO() {
         this->uses.push_back(new Physical(x86::Rax));
@@ -295,7 +302,7 @@ struct CQO : X86Instruction {
     }
 };
 
-struct IDIV : X86Instruction {
+struct IDIV: X86Instruction {
     DEBUG_INFO2(IDIV)
     IDIV(BaseRegister* reg) {
         this->uses.push_back(reg);
@@ -308,7 +315,7 @@ struct IDIV : X86Instruction {
     }
 };
 
-struct SHL : X86Instruction {
+struct SHL: X86Instruction {
     DEBUG_INFO2(SHL)
     SHL(BaseRegister* reg) {
         this->uses.push_back(reg);
@@ -319,7 +326,7 @@ struct SHL : X86Instruction {
     }
 };
 
-struct SHR : X86Instruction {
+struct SHR: X86Instruction {
     DEBUG_INFO2(SHR)
     SHR(BaseRegister* reg) {
         this->uses.push_back(reg);
@@ -330,7 +337,7 @@ struct SHR : X86Instruction {
     }
 };
 
-struct ASR : X86Instruction {
+struct ASR: X86Instruction {
     DEBUG_INFO2(ASR)
     ASR(BaseRegister* reg) {
         this->uses.push_back(reg);
@@ -341,46 +348,34 @@ struct ASR : X86Instruction {
     }
 };
 
-struct SETZ : X86Instruction {
+struct SETZ: X86Instruction {
     DEBUG_INFO2(SETZ)
-    SETZ(BaseRegister* dst) {
-        this->defs.push_back(dst);
-    }
+    SETZ(BaseRegister* dst) { this->defs.push_back(dst); }
 };
 
-struct SETNZ : X86Instruction {
+struct SETNZ: X86Instruction {
     DEBUG_INFO2(SETNZ)
-    SETNZ(BaseRegister* dst) {
-        this->defs.push_back(dst);
-    }
+    SETNZ(BaseRegister* dst) { this->defs.push_back(dst); }
 };
 
-struct SETLE : X86Instruction {
+struct SETLE: X86Instruction {
     DEBUG_INFO2(SETLE)
-    SETLE(BaseRegister* dst) {
-        this->defs.push_back(dst);
-    }
+    SETLE(BaseRegister* dst) { this->defs.push_back(dst); }
 };
 
 struct SETLS: X86Instruction {
     DEBUG_INFO2(SETLS)
-    SETLS(BaseRegister* dst) {
-        this->defs.push_back(dst);
-    }
+    SETLS(BaseRegister* dst) { this->defs.push_back(dst); }
 };
 
 struct SETGT: X86Instruction {
     DEBUG_INFO2(SETGT)
-    SETGT(BaseRegister* dst) {
-        this->defs.push_back(dst);
-    }
+    SETGT(BaseRegister* dst) { this->defs.push_back(dst); }
 };
 
 struct SETGE: X86Instruction {
     DEBUG_INFO2(SETGE)
-    SETGE(BaseRegister* dst) {
-        this->defs.push_back(dst);
-    }
+    SETGE(BaseRegister* dst) { this->defs.push_back(dst); }
 };
 
 struct INT3: X86Instruction {
@@ -391,33 +386,31 @@ struct HLT: X86Instruction {
     DEBUG_INFO2(HLT)
 };
 
-struct CMPIMM : X86Instruction {
+struct CMPIMM: X86Instruction {
     DEBUG_INFO2(CMPIMM)
 
     long imm;
 
-    CMPIMM(BaseRegister* lhs, long imm): imm(imm) {
-        this->uses.push_back(lhs);
-    }
+    CMPIMM(BaseRegister* lhs, long imm) : imm(imm) { this->uses.push_back(lhs); }
 };
 
-struct LOADMEM : X86Instruction {
+struct LOADMEM: X86Instruction {
     DEBUG_INFO2(LOADMEM)
 
     long offset;
 
-    LOADMEM(BaseRegister* dst, BaseRegister* src, long offset): offset(offset) {
+    LOADMEM(BaseRegister* dst, BaseRegister* src, long offset) : offset(offset) {
         this->defs.push_back(dst);
         this->uses.push_back(src);
     }
 };
 
-struct STOREMEM : X86Instruction {
+struct STOREMEM: X86Instruction {
     DEBUG_INFO2(STOREMEM)
 
     long offset;
 
-    STOREMEM(BaseRegister* dst, BaseRegister* src, long offset): offset(offset) {
+    STOREMEM(BaseRegister* dst, BaseRegister* src, long offset) : offset(offset) {
         this->uses.push_back(dst);
         this->uses.push_back(src);
     }
@@ -427,61 +420,63 @@ struct StackSlot {
     size_t id = 999'999;
 };
 
-struct STORESTACK : X86Instruction {
+struct STORESTACK: X86Instruction {
     DEBUG_INFO2(STORESTACK)
 
     StackSlot slot;
     long offset;
 
-    STORESTACK(BaseRegister* value, StackSlot slot, long offset): slot(slot), offset(offset) {
-        this->uses.push_back(value);
-    }
+    STORESTACK(BaseRegister* value, StackSlot slot, long offset) : slot(slot), offset(offset) { this->uses.push_back(value); }
 };
 
-struct LOADSTACK : X86Instruction {
+struct LOADSTACK: X86Instruction {
     DEBUG_INFO2(LOADSTACK)
 
     StackSlot slot;
     long offset;
     size_t size;
 
-    LOADSTACK(BaseRegister* dst, StackSlot slot, long offset, size_t size): slot(slot), offset(offset), size(size) {
-        this->defs.push_back(dst);
-    }
+    LOADSTACK(BaseRegister* dst, StackSlot slot, long offset, size_t size) : slot(slot), offset(offset), size(size) { this->defs.push_back(dst); }
 };
 
-struct LOADRIP : X86Instruction {
+struct LOADRIP: X86Instruction {
     DEBUG_INFO2(LOADRIP)
-    LOADRIP(BaseRegister* dst, long offset) {
-        this->defs.push_back(dst);
-    }
+    LOADRIP(BaseRegister* dst, long offset) { this->defs.push_back(dst); }
 };
 
-struct LEASTACK : X86Instruction {
+struct LEASTACK: X86Instruction {
     DEBUG_INFO2(LEASTACK)
 
     StackSlot slot;
 
-    LEASTACK(BaseRegister* dst, StackSlot slot): slot(slot) {
-        this->defs.push_back(dst);
-    }
+    LEASTACK(BaseRegister* dst, StackSlot slot) : slot(slot) { this->defs.push_back(dst); }
 };
 
-struct MOVMEMIMM : X86Instruction {
+struct MOVMEMIMM: X86Instruction {
     DEBUG_INFO2(MOVMEMIMM)
 
     long imm;
 
-    MOVMEMIMM(BaseRegister* dst, BaseRegister* src, long imm): imm(imm) {
+    MOVMEMIMM(BaseRegister* dst, BaseRegister* src, long imm) : imm(imm) {
         this->defs.push_back(dst);
         this->uses.push_back(src);
     }
 };
 
-struct JZ : X86Instruction {
+struct JZ: X86Instruction {
     DEBUG_INFO2(JZ)
     Block* tgt;
-    JZ(Block* tgt): tgt(tgt) {}
+    JZ(Block* tgt) : tgt(tgt) {}
+};
+
+struct SYSCALL: X86Instruction {
+    DEBUG_INFO2(SYSCALL)
+
+    SYSCALL(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills) {
+        this->defs = std::vector<BaseRegister*>{defs.begin(), defs.end()};
+        this->kills = std::vector<BaseRegister*>{kills.begin(), kills.end()};
+        this->uses = std::vector<BaseRegister*>{uses.begin(), uses.end()};
+    }
 };
 
 struct Block {
@@ -496,65 +491,49 @@ struct Block {
 
     size_t size = 0;
 
+    void appender(auto&& fn) {
+        auto cpy = insertPoint;
+        fn();
+        insertPoint = cpy;
+    }
+
     struct Iterator {
         X86Instruction* next;
 
-        void operator++() {
-            next = next->next;
-        }
+        void operator++() { next = next->next; }
 
-        X86Instruction*& operator*() {
-            return next;
-        }
+        X86Instruction*& operator*() { return next; }
 
-        bool operator==(const Iterator& other) const {
-            return this->next == other.next;
-        }
+        bool operator==(const Iterator& other) const { return this->next == other.next; }
     };
 
     struct RevIterator {
         X86Instruction* next;
 
-        void operator++() {
-            next = next->prev;
-        }
+        void operator++() { next = next->prev; }
 
-        X86Instruction*& operator*() {
-            return next;
-        }
+        X86Instruction*& operator*() { return next; }
 
-        bool operator==(const RevIterator& other) const {
-            return this->next == other.next;
-        }
+        bool operator==(const RevIterator& other) const { return this->next == other.next; }
     };
 
     struct Iter {
         X86Instruction* start;
 
-        Iterator begin() {
-            return Iterator{start};
-        }
+        Iterator begin() { return Iterator{start}; }
 
-        Iterator end() {
-            return Iterator{nullptr};
-        }
+        Iterator end() { return Iterator{nullptr}; }
     };
 
     struct RevIter {
         X86Instruction* start;
 
-        RevIterator begin() {
-            return RevIterator{start};
-        }
+        RevIterator begin() { return RevIterator{start}; }
 
-        RevIterator end() {
-            return RevIterator{nullptr};
-        }
+        RevIterator end() { return RevIterator{nullptr}; }
     };
 
-    Iter iterator() {
-        return Iter{this->first};
-    }
+    Iter iterator() { return Iter{this->first}; }
 
     void insertBefore(X86Instruction* subj, X86Instruction* self) {
         if (subj == first) first = self;
@@ -566,7 +545,7 @@ struct Block {
         insertBetweene(self, before, after);
     }
 
-    static constexpr long STEP = 1024*1024;
+    static constexpr long STEP = 1024 * 1024;
 
     void insertBetweene(X86Instruction* self, X86Instruction* before, X86Instruction* after) {
         if (before != nullptr) before->next = self;
@@ -578,11 +557,11 @@ struct Block {
         if (before == nullptr && after == nullptr) {
             self->orderId = 0;
         } else if (before == nullptr) {
-            self->orderId = after->orderId-STEP;
+            self->orderId = after->orderId - STEP;
         } else if (after == nullptr) {
-            self->orderId = before->orderId+STEP;
+            self->orderId = before->orderId + STEP;
         } else {
-            self->orderId = (before->orderId+after->orderId)/2;
+            self->orderId = (before->orderId + after->orderId) / 2;
         }
 
         size += 1;
@@ -644,11 +623,10 @@ static void printBlockInst(X86Instruction* inst, std::ostream& ss) {
     ss << " [";
     for (auto i = 0ul; i < inst->uses.size(); i++) {
         ss << inst->uses[i]->toString();
-        if (i != inst->uses.size()-1) ss << ",";
+        if (i != inst->uses.size() - 1) ss << ",";
     }
     ss << "]";
 }
-
 
 static void printBlock(Block* b) {
     for (auto inst: b->iterator()) {
@@ -668,7 +646,7 @@ static void printBlock(Block* b) {
         std::cout << " [";
         for (auto i = 0ul; i < inst->uses.size(); i++) {
             std::cout << inst->uses[i]->toString();
-            if (i != inst->uses.size()-1) std::cout << ",";
+            if (i != inst->uses.size() - 1) std::cout << ",";
         }
         std::cout << "]";
         std::cout << std::endl;
@@ -693,17 +671,13 @@ struct Range {
         return (other.first->orderId >= self.first->orderId && other.first->orderId <= self.last->orderId) || (other.last->orderId >= self.first->orderId && other.last->orderId <= self.last->orderId);
     }
 
-    bool intersects(Range other) {
-        return Range::intersects(other, *this) || Range::intersects(*this, other);
-    }
+    bool intersects(Range other) { return Range::intersects(other, *this) || Range::intersects(*this, other); }
 };
 
 struct RangeSet {
     std::vector<Range> ranges;
 
-    void add(Range r) {
-        ranges.push_back(r);
-    }
+    void add(Range r) { ranges.push_back(r); }
 
     bool intersects(Range other) {
         for (auto r: ranges) {
@@ -721,19 +695,15 @@ struct GraphColoring {
     size_t regCounter = 0;
     std::shared_ptr<Logger> logger;
 
-    GraphColoring(std::shared_ptr<Logger> logger): logger(logger) {
+    GraphColoring(std::shared_ptr<Logger> logger) : logger(logger) {}
 
-    }
-
-    size_t interferenceCount(size_t reg) {
-        return this->interference[reg].size();
-    }
+    size_t interferenceCount(size_t reg) { return this->interference[reg].size(); }
 
     size_t getInterferenceMaxNeighbour(size_t reg) {
         auto max = interferenceCount(reg);
         auto worst = reg;
 
-        for (auto other : interference[reg]) {
+        for (auto other: interference[reg]) {
             if (other >= 50'000) continue; // HACK
             auto otherInt = interferenceCount(other);
             if (otherInt > max) {
@@ -749,7 +719,7 @@ struct GraphColoring {
         GraphColoring self{logger};
 
         std::vector<size_t> regs;
-        for (auto i : interf) {
+        for (auto i: interf) {
             regs.push_back(i.first);
         }
 
@@ -759,9 +729,7 @@ struct GraphColoring {
         return self;
     }
 
-    void colorReg(size_t id, x86::X64Register color) {
-        allocated.emplace(id, color);
-    }
+    void colorReg(size_t id, x86::X64Register color) { allocated.emplace(id, color); }
 
     bool doesRegInterfere(size_t self, x86::X64Register phyReg) {
         for (auto inte: interference[self]) {
@@ -803,9 +771,7 @@ struct GraphColoring {
         return false;
     }
 
-    size_t getUncoloredReg() {
-        return registers[regCounter++];
-    }
+    size_t getUncoloredReg() { return registers[regCounter++]; }
 
     std::optional<size_t> findColorForReg(size_t reg) {
         for (auto j = 0ul; j < regCount; j++) {
@@ -822,9 +788,7 @@ struct GraphColoring {
         return std::nullopt;
     }
 
-    bool hasUncoloredReg() {
-        return regCounter < registers.size();
-    }
+    bool hasUncoloredReg() { return regCounter < registers.size(); }
 
     std::optional<size_t> regAllocFast() {
         while (hasUncoloredReg()) {
@@ -841,8 +805,8 @@ struct GraphColoring {
         std::string buffer;
 
         buffer += "uniform graph {\n";
-        for (auto [self, others] : this->interference) {
-            for (auto other : others) {
+        for (auto [self, others]: this->interference) {
+            for (auto other: others) {
                 buffer += stringify("{} -- {}\n", self, other);
                 buffer += "\n";
             }
@@ -862,12 +826,19 @@ struct Graph {
     std::vector<size_t> stackSizes;
     std::shared_ptr<Logger> logger;
 
-    Graph(std::shared_ptr<Logger> logger): logger(logger) {
+    Graph(std::shared_ptr<Logger> logger) : logger(logger) {}
+
+    void forEachInst(std::function<void(Block*, X86Instruction*)> fn) {
+        for (auto block : blocks) {
+            for (auto inst : block->iterator()) {
+                fn(block, inst);
+            }
+        }
     }
 
     size_t totalStackSize() const {
         size_t acu = 0;
-        for (auto size : stackSizes) {
+        for (auto size: stackSizes) {
             acu += size;
         }
 
@@ -877,7 +848,7 @@ struct Graph {
     std::map<size_t, size_t> stackOffsets() const {
         std::map<size_t, size_t> offsets;
         size_t acu = 0;
-        for (auto [i, size] : stackSizes | views::enumerate) {
+        for (auto [i, size]: stackSizes | views::enumerate) {
             offsets[i] = acu;
             acu += size;
         }
@@ -891,7 +862,7 @@ struct Graph {
 
     std::string tag;
 
-    GraphColoring registerAllocate(std::function<std::string(size_t)> getPath) {
+    GraphColoring registerAllocate(const std::function<void(size_t)>& onFailedAlloc = [](auto) {}) {
         size_t spillCounter = 0;
 
         while (true) {
@@ -908,37 +879,29 @@ struct Graph {
             logger->DEBUG("[graph-color] spilling {}", toSpill);
             this->spill(new Virtual{toSpill});
 
-            Graph::GVEmit ee1;
-            emitGV2(ee1);
-            writeBytesToFile(getPath(spillCounter), ee1.ss.str());
+            onFailedAlloc(spillCounter);
 
             spillCounter += 1;
         }
     }
 
-    size_t allocVirtId() {
-        return virtCounter++;
-    }
+    size_t allocVirtId() { return virtCounter++; }
 
-    Virtual* allocaVirtReg() {
-        return new Virtual{allocVirtId()};
-    }
+    Virtual* allocaVirtReg() { return new Virtual{allocVirtId()}; }
 
     size_t allocStack(size_t size, size_t alignment) {
         stackSizes.push_back(size);
-        return stackSizes.size()-1;
+        return stackSizes.size() - 1;
     }
 
-    StackSlot allocStackSlot(size_t size, size_t alignment) {
-        return StackSlot{allocStack(size, alignment)};
-    }
+    StackSlot allocStackSlot(size_t size, size_t alignment) { return StackSlot{allocStack(size, alignment)}; }
 
     void prune() {
         std::set<size_t> used;
 
-        for (auto b : blocks) {
-            for (auto inst : b->iterator()) {
-                for (auto use : inst->uses) {
+        for (auto b: blocks) {
+            for (auto inst: b->iterator()) {
+                for (auto use: inst->uses) {
                     if (auto v = use->as<Virtual>(); v) {
                         used.insert(v->id);
                     }
@@ -949,7 +912,7 @@ struct Graph {
         auto canDelete = [&](std::span<BaseRegister*> defs) {
             if (defs.empty()) return false;
 
-            for (auto reg : defs) {
+            for (auto reg: defs) {
                 if (auto v = reg->as<Virtual>(); v) {
                     if (used.contains(v->id)) return false;
                 } else {
@@ -959,43 +922,43 @@ struct Graph {
             return true;
         };
 
-        for (auto b : blocks) {
+        for (auto b: blocks) {
             std::set<X86Instruction*> toDelete;
-            for (auto inst : b->iterator()) {
+            for (auto inst: b->iterator()) {
                 if (canDelete(inst->defs)) {
                     toDelete.insert(inst);
                 }
             }
-            for (auto inst : toDelete) b->erase(inst);
+            for (auto inst: toDelete)
+                b->erase(inst);
         }
     }
 
     void print() {
-        for (auto [id, block] : blocks | views::enumerate) {
+        for (auto [id, block]: blocks | views::enumerate) {
             println("BLOCK {}", id);
             printBlock(block);
         }
     }
 
     void printLiveRange() {
-        for (auto [id, block] : blocks | views::enumerate) {
-            println("BLOCK {} range 0..<{}", id, block->size-1);
-            for (auto range : virtualRanges[block]) {
+        for (auto [id, block]: blocks | views::enumerate) {
+            println("BLOCK {} range 0..<{}", id, block->size - 1);
+            for (auto range: virtualRanges[block]) {
                 println("  v{} = {}..{}", range.first, range.second.first->orderId, range.second.last->orderId);
             }
         }
     }
 
     X86Instruction* findDefVirt(Block* block, X86Instruction* start, size_t virtId) {
-        for (auto inst : Block::RevIter{start->prev}) {
+        for (auto inst: Block::RevIter{start->prev}) {
             if (inst->hasDefVirt(virtId)) return inst;
         }
         return nullptr;
     }
 
-
     X86Instruction* findDefPhy(Block* block, X86Instruction* start, x86::X64Register phyId) {
-        for (auto inst : Block::RevIter{start->prev}) {
+        for (auto inst: Block::RevIter{start->prev}) {
             if (inst->hasDefPhy(phyId)) return inst;
         }
         return nullptr;
@@ -1040,7 +1003,6 @@ struct Graph {
         return false;
     }
 
-
     void findDefVirtRec(Block* block, X86Instruction* foundUse, size_t virtId, std::set<Block*>& visited) {
         if (visited.contains(block)) return;
         visited.insert(block);
@@ -1051,7 +1013,7 @@ struct Graph {
         if (foundDef != nullptr) {
             markLiveVirt(block, foundDef, foundUse, virtId);
         } else {
-            markLiveVirt(block, block->first, foundUse, virtId);// implicitly mark live range, search in incoming
+            markLiveVirt(block, block->first, foundUse, virtId); // implicitly mark live range, search in incoming
 
             for (auto inc: block->incoming) {
                 findDefVirtRec(inc, nullptr, virtId, visited);
@@ -1065,7 +1027,7 @@ struct Graph {
         this->virtualRanges.clear();
         this->physicalRanges.clear();
         for (auto block: blocks) {
-            for (auto inst : block->iterator()) {
+            for (auto inst: block->iterator()) {
                 for (auto use: inst->uses) {
                     auto v = use->as<Virtual>();
                     if (v == nullptr) continue;
@@ -1097,7 +1059,8 @@ struct Graph {
         std::set<size_t> res;
 
         for (const auto& [block, ranges]: virtualRanges) {
-            for (auto [vId, stuff]: ranges) res.insert(vId);
+            for (auto [vId, stuff]: ranges)
+                res.insert(vId);
         }
 
         return res;
@@ -1107,13 +1070,12 @@ struct Graph {
         std::set<x86::X64Register> res;
 
         for (const auto& [block, ranges]: physicalRanges) {
-            for (auto [vId, stuff]: ranges) res.insert(vId);
+            for (auto [vId, stuff]: ranges)
+                res.insert(vId);
         }
 
         return res;
     }
-
-
 
     // find all definition / uses of register
     // insert mem load before each load
@@ -1123,10 +1085,10 @@ struct Graph {
     // we could loose the tmp requiriment and simplify life for reg allocator?
     // mby create simple pass that can look at the generated instructions and try to merge them?
     void spill(Virtual* regId) {
-        auto stackSlot = allocStackSlot(8,8);
+        auto stackSlot = allocStackSlot(8, 8);
 
-        for (auto block : this->blocks) {
-            for (auto inst : block->iterator()) {
+        for (auto block: this->blocks) {
+            for (auto inst: block->iterator()) {
                 if (inst->hasDefVirt(regId->id)) {
                     auto tmp = allocaVirtReg();
                     block->insertAfter(inst, new STORESTACK(tmp, stackSlot, 0));
@@ -1151,8 +1113,8 @@ struct Graph {
         std::map<size_t, std::set<x86::X64Register>> virtToPhy;
 
         for (auto block: blocks) {
-            for (auto rangeA : virtualRanges[block]) {
-                for (auto rangeB : virtualRanges[block]) {
+            for (auto rangeA: virtualRanges[block]) {
+                for (auto rangeB: virtualRanges[block]) {
                     if (rangeA.second.intersects(rangeB.second)) {
                         virtToVirt[rangeB.first].insert(rangeA.first);
                         virtToVirt[rangeA.first].insert(rangeB.first);
@@ -1161,8 +1123,8 @@ struct Graph {
             }
         }
 
-        for (auto self : virtIds) {
-            for (auto other : phyIds) {
+        for (auto self: virtIds) {
+            for (auto other: phyIds) {
                 auto ints = virtPhyInt(self, other);
                 if (ints) {
                     virtToPhy[self].insert(other);
@@ -1172,17 +1134,17 @@ struct Graph {
 
         size_t physVirtBase = 50'000;
         std::map<size_t, std::set<size_t>> virtToVirt2 = virtToVirt;
-        for (auto [virt, physs] : virtToPhy) {
-            for (auto phys : physs) {
-                virtToVirt2[virt].insert(physVirtBase+phys.getRawValue());
-                virtToVirt2[physVirtBase+phys.getRawValue()].insert(virt);
+        for (auto [virt, physs]: virtToPhy) {
+            for (auto phys: physs) {
+                virtToVirt2[virt].insert(physVirtBase + phys.getRawValue());
+                virtToVirt2[physVirtBase + phys.getRawValue()].insert(virt);
             }
         }
 
         GraphColoring gc = GraphColoring::create(logger, virtToVirt2);
-        for (auto [virt, physs] : virtToPhy) {
-            for (auto phys : physs) {
-                gc.colorReg(physVirtBase+phys.getRawValue(), phys);
+        for (auto [virt, physs]: virtToPhy) {
+            for (auto phys: physs) {
+                gc.colorReg(physVirtBase + phys.getRawValue(), phys);
             }
         }
 
@@ -1205,9 +1167,7 @@ struct Graph {
             ss << stringify(strArg, std::forward<Args>(argz)...) << std::endl;
         }
 
-        void appendLine() {
-            ss << std::endl;
-        }
+        void appendLine() { ss << std::endl; }
     };
 
     void emitGVBlock(GVEmit& e, Block* b, size_t id) {
@@ -1221,12 +1181,12 @@ struct Graph {
             e.appendLine("edge[rank=same];");
             e.appendLine();
 
-            for (auto i = 0ul; i < b->size-1; i++) {
-                e.appendLine("b{}i{} -> b{}i{}", id, i, id, i+1);
+            for (auto i = 0ul; i < b->size - 1; i++) {
+                e.appendLine("b{}i{} -> b{}i{}", id, i, id, i + 1);
             }
             e.appendLine();
 
-            for (auto inst : b->iterator()) {
+            for (auto inst: b->iterator()) {
                 e.appendLine("b{}i{} [shape=rect]", id, inst->orderId);
                 std::stringstream ss;
                 printBlockInst(inst, ss);
@@ -1243,7 +1203,7 @@ struct Graph {
         e.ident([&] {
             e.appendLine(R"(xlabel="B{}", label = "{)", id);
 
-            for (auto inst : b->iterator()) {
+            for (auto inst: b->iterator()) {
                 std::stringstream ss;
                 printBlockInst(inst, ss);
                 e.appendLine("<i{}>{}", inst->orderId, ss.str());
@@ -1270,7 +1230,7 @@ struct Graph {
 
             // block edges
             for (auto src: blocks) {
-                for (auto dst : src->outgoing) {
+                for (auto dst: src->outgoing) {
                     e.appendLine("b{}:i{} -> b{}:i{} [tailport=s, headport=n];", src->id, src->last->orderId, dst->id, dst->first->orderId);
                 }
             }
@@ -1278,8 +1238,8 @@ struct Graph {
             // virt regs
             std::optional<std::size_t> lastId;
             e.appendLine("subgraph {");
-            for (auto block : blocks) {
-                for (auto [regId, range] : virtualRanges[block]) {
+            for (auto block: blocks) {
+                for (auto [regId, range]: virtualRanges[block]) {
                     e.appendLine("v{} [shape=oval]", regId);
                     auto color = (range.first->hasDefVirt(regId)) ? "green"sv : "red"sv;
                     auto xd = false;
@@ -1296,11 +1256,11 @@ struct Graph {
 
             // phy regs
             e.appendLine("subgraph {");
-            for (auto block : blocks) {
-                for (auto [regId, rangeSet] : physicalRanges[block]) {
+            for (auto block: blocks) {
+                for (auto [regId, rangeSet]: physicalRanges[block]) {
                     // e.appendLine("{} [shape=oval]", regId.toString());
-                    for (auto range : rangeSet.ranges) {
-                        // e.appendLine("b{}:i{} -> b{}:i{} [color=purple] [label={}, tailport=w];", block->id, range.first->orderId, block->id, range.last->orderId, regId.toString());
+                    for (auto range: rangeSet.ranges) {
+                        e.appendLine("b{}:i{} -> b{}:i{} [color=purple] [label={}, tailport=w];", block->id, range.first->orderId, block->id, range.last->orderId, regId.toString());
                     }
                 }
             }
@@ -1309,7 +1269,6 @@ struct Graph {
 
         e.appendLine("}");
     }
-
 
     void emitGV(GVEmit& e) {
         e.appendLine("digraph G {");
@@ -1322,14 +1281,14 @@ struct Graph {
 
             // block edges
             for (auto src: blocks) {
-                for (auto dst : src->outgoing) {
-                    e.appendLine("b{}i{} -> b{}i{};", src->id, src->size-1, dst->id, 0);
+                for (auto dst: src->outgoing) {
+                    e.appendLine("b{}i{} -> b{}i{};", src->id, src->size - 1, dst->id, 0);
                 }
             }
 
             // regs
-            for (auto block : blocks) {
-                for (auto [regId, range] : virtualRanges[block]) {
+            for (auto block: blocks) {
+                for (auto [regId, range]: virtualRanges[block]) {
                     e.appendLine("v{} -> b{}i{} [color=red];", regId, block->id, range.first->orderId);
                     e.appendLine("v{} -> b{}i{} [color=red];", regId, block->id, range.last->orderId);
                 }
@@ -1342,167 +1301,23 @@ struct Graph {
     std::vector<size_t> linearized;
 };
 
-#define CHCK(n, type) if (type<CTX>* n = inst.template cst<type>(); n)
-
-struct BasePattern {
-    virtual ~BasePattern() = default;
-
-    template<class T>
-    T* as() {
-        return dynamic_cast<T*>(this);
-    }
-};
-
-struct SimplePattern : BasePattern {
-    SimplePattern(const char* base, std::vector<BasePattern*> params) : base(base), params(params) {}
-    const char* base;
-    std::vector<BasePattern*> params;
-};
-
-struct SimpleWildPattern : BasePattern {
-    SimpleWildPattern(const char* base) : base(base) {}
-    const char* base;
-};
-
-struct WildCardPattern : BasePattern {};
-
-struct BinOpPattern : BasePattern {
-    BinOpPattern(
-        Assembler::BinaryOp op,
-        Assembler::BaseDataType type,
-        BasePattern* lhs,
-        BasePattern* rhs) : op(op), type(type), lhs(lhs), rhs(rhs) {}
-    Assembler::BinaryOp op;
-    Assembler::BaseDataType type;
-    BasePattern* lhs;
-    BasePattern* rhs;
-};
-
-template<typename T, typename... Args>
-BasePattern* makePattern(Args... arg) {
-    return new SimplePattern{typeid(T).name(), std::vector<typename First<Args...>::TYPE>{arg...}};
-}
-
-template<typename T>
-BasePattern* makePattern() {
-    return new SimplePattern{typeid(T).name(), std::vector<BasePattern*>{}};
-}
-
-template<typename T>
-BasePattern* makeWildPattern() {
-    return new SimpleWildPattern{typeid(T).name()};
-}
-
-template<Assembler::BinaryOp OP, Assembler::BaseDataType TYP>
-BasePattern* makeBin(BasePattern* lhs, BasePattern* rhs) {
-    return new BinOpPattern{OP, TYP, lhs, rhs};
-}
-
-static BasePattern* WILD = new WildCardPattern{};
-
-/*
-args := alloca 8
-_ := store_mem args, a0
-ret := alloca 8
-run := mov_rip
-hand := mov_rip
-_ := call [run, hand, args, ret]
- */
-
 template<typename CTX>
 struct Lower {
+    using IM = InstructionMatcher<CTX>;
     std::map<SSARegisterHandle, size_t> virtRegs;
     std::map<void*, StackSlot> allocaSlots;
-    std::string name;
     Graph g;
 
-    Lower(std::shared_ptr<Logger> logger = Logger::NOP()): g(logger) {
-
-    }
-
+    Lower(std::shared_ptr<Logger> logger = Logger::NOP()) : g(logger) {}
 
     StackSlot allocateStack(size_t size, size_t alignment) {
         // FIXME this is retarded
         return g.allocStackSlot(size, alignment);
     }
 
-    struct MatchedInstructions {
-        IRInstruction<CTX>* inst = nullptr;
-        std::vector<MatchedInstructions*> params;
-
-        template<typename... Args>
-        MatchedInstructions& operator[](Args... args) {
-            MatchedInstructions* self = this;
-            for (auto arg: {args...}) {
-                self = self->params[arg];
-            }
-            return *self;
-        }
-
-        IRInstruction<CTX>* operator->() {
-            return inst;
-        }
-
-        IRInstruction<CTX>* operator*() {
-            return inst;
-        }
-    };
-
-    template<template<typename> typename T, typename... Args>
-    BasePattern* makePattern(Args... arg) {
-        return ::makePattern<T<CTX>, Args...>(std::forward<Args>(arg)...);
-    }
-
-    template<template<typename> typename T>
-    BasePattern* makePattern() {
-        return ::makePattern<T<CTX>>();
-    }
-
-    bool matchPattern(ControlFlowGraph<CTX>& cfg, IRInstruction<CTX>* inst, BasePattern* pattern, std::vector<IRInstruction<CTX>*>& wildcards, std::vector<IRInstruction<CTX>*>& consumed, MatchedInstructions* matched) {
-        matched->inst = inst;
-        if (auto bin = pattern->as<BinOpPattern>(); bin) {
-            instructions::BinaryInstruction<CTX>* bbin = inst->template cst<instructions::BinaryInstruction<CTX>>();
-            if (bbin == nullptr) return false;
-            if (bbin->op != bin->op) return false;
-            if (bbin->type != bin->type) return false;
-            consumed.push_back(inst);
-            auto l = new MatchedInstructions{};
-            auto r = new MatchedInstructions{};
-            matched->params.push_back(l);
-            matched->params.push_back(r);
-            return matchPattern(cfg, cfg.resolveInstruction(bbin->getSrc(0)), bin->lhs, wildcards, consumed, l) && matchPattern(cfg, cfg.resolveInstruction(bbin->getSrc(1)), bin->rhs, wildcards, consumed, r);
-        } else if (auto wild = pattern->as<WildCardPattern>(); wild) {
-            wildcards.push_back(inst);
-            return true;
-        } else if (auto sim = pattern->as<SimplePattern>(); sim) {
-            if (typeid(*inst).name() != sim->base) return false;
-
-            for (auto i = 0ul; i < sim->params.size(); i++) {
-                auto ii = new MatchedInstructions{};
-                auto didMatch = matchPattern(cfg, cfg.resolveInstruction(inst->getSrc(i)), sim->params[i], wildcards, consumed, ii);
-                matched->params.push_back(ii);
-                if (!didMatch) return false;
-            }
-            consumed.push_back(inst);
-            return true;
-        } else if (auto sim1 = pattern->as<SimpleWildPattern>(); sim1) {
-            if (typeid(*inst).name() != sim1->base) return false;
-
-            for (auto i = 0ul; i < inst->srcCount(); i++) {
-                auto ii = new MatchedInstructions{};
-                auto didMatch = matchPattern(cfg, cfg.resolveInstruction(inst->getSrc(i)), WILD, wildcards, consumed, ii);
-                matched->params.push_back(ii);
-                if (!didMatch) return false;
-            }
-            consumed.push_back(inst);
-            return true;
-        }
-        PANIC();
-    }
-
     void insertPrologueEpilogue(std::set<x86::X64Register> regs) {
         std::map<x86::X64Register, StackSlot> ss;
-        for (auto reg : regs) {
+        for (auto reg: regs) {
             auto saveType = x86::sysVSave(reg);
             if (saveType != x86::X64Register::SaveType::Callee) continue;
 
@@ -1510,10 +1325,10 @@ struct Lower {
             g.root->insertBefore(g.root->first, new STORESTACK(new Physical(reg), ss[reg], 0));
         }
 
-        for (auto block : g.blocks) {
-            for (auto inst : block->iterator()) {
+        for (auto block: g.blocks) {
+            for (auto inst: block->iterator()) {
                 if (inst->is<RET>()) {
-                    for (auto reg : regs) {
+                    for (auto reg: regs) {
                         auto saveType = x86::sysVSave(reg);
                         if (saveType != x86::X64Register::SaveType::Callee) continue;
 
@@ -1524,30 +1339,22 @@ struct Lower {
         }
     }
 
-
     // template<typename CTX>
     struct RewriteRule {
-        std::function<void(Lower& l, Lower::MatchedInstructions inst, Block* block)> rewrite;
+        std::function<void(Lower& l, typename IM::MatchedInstructions inst, Block* block)> rewrite;
         BasePattern* pattern;
     };
 
-    static RewriteRule* makeRewrite(BasePattern* pat, std::function<void(Lower& l, Lower::MatchedInstructions inst, Block* block)> rev) {
-        return new RewriteRule{rev, pat};
-    }
+    static RewriteRule* makeRewrite(BasePattern* pat, std::function<void(Lower& l, typename IM::MatchedInstructions inst, Block* block)> rev) { return new RewriteRule{rev, pat}; }
 
-    void doConsuming(
-        ControlFlowGraph<CTX>& cfg,
-        std::set<IRInstruction<CTX>*>& globalConsumed,
-        std::span<RewriteRule*> patterns,
-        IRInstruction<CTX>* inst,
-        Block* block) {
+    void doConsuming(ControlFlowGraph<CTX>& cfg, std::set<IRInstruction<CTX>*>& globalConsumed, std::span<RewriteRule*> patterns, IRInstruction<CTX>* inst, Block* block) {
         if (globalConsumed.contains(inst)) return;
 
         for (auto pattern: patterns) {
             std::vector<IRInstruction<CTX>*> wildcards;
             std::vector<IRInstruction<CTX>*> consumed;
-            MatchedInstructions matched;
-            auto didMatch = matchPattern(cfg, inst, pattern->pattern, wildcards, consumed, &matched);
+            typename IM::MatchedInstructions matched;
+            auto didMatch = matcher.matchPattern(cfg, inst, pattern->pattern, wildcards, consumed, &matched);
             if (!didMatch) continue;
             globalConsumed.insert(inst);
 
@@ -1577,7 +1384,7 @@ struct Lower {
         std::set<IRInstruction<CTX>*> globalConsumed;
 
         auto bb = getBlockForId(block.id());
-        for (auto b : block.getTargets()) {
+        for (auto b: block.getTargets()) {
             bb->addTarget(getBlockForId(b));
         }
 
@@ -1600,13 +1407,9 @@ struct Lower {
         return new Virtual{virtRegs[hand]};
     }
 
-    Virtual* allocReg() {
-        return g.allocaVirtReg();
-    }
+    Virtual* allocReg() { return g.allocaVirtReg(); }
 
-    Virtual* getReg(IRInstruction<CTX>* hand) {
-        return getReg(hand->target);
-    }
+    Virtual* getReg(IRInstruction<CTX>* hand) { return getReg(hand->target); }
 
     long getImm(IRInstruction<CTX>* inst) {
         if (auto intLit = inst->template cst<instructions::IntLiteral>(); intLit) {
@@ -1615,24 +1418,14 @@ struct Lower {
         TODO()
     }
 
-    void emitLoadAddImm(Lower<CTX>& l, MatchedInstructions inst, Block* block) {
-        block->push<MOVMEMIMM>(l.getReg(inst->target), l.getReg(inst[0, 0]->target), l.getImm(inst[0, 1]->target));
-    }
-
-    void emitMul(Lower<CTX>& l, MatchedInstructions inst, Block* block) {
-        block->push<MOV>(l.getReg(inst->target), l.getReg(inst[0]));
-        block->push<MUL>(l.getReg(inst->target), l.getReg(inst[1]));
-    }
+    void emitLoadAddImm(Lower<CTX>& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVMEMIMM>(l.getReg(inst->target), l.getReg(inst[0, 0]->target), l.getImm(inst[0, 1]->target)); }
 
     void matchCFG(ControlFlowGraph<CTX>& cfg, std::span<RewriteRule*> patterns) {
-        cfg.forEachBlock([&](CodeBlock<CTX>& block) {
-            matchBlock(cfg, block, patterns);
-        });
+        cfg.forEachBlock([&](CodeBlock<CTX>& block) { matchBlock(cfg, block, patterns); });
     }
 
-    void emitCall(std::vector<SSARegisterHandle> ret, std::span<IRInstruction<CTX>*> argz, Block* block, size_t id) {
+    void emitCall(std::vector<SSARegisterHandle> ret, std::span<IRInstruction<CTX>*> argz, Block* block, size_t id, bool isRipOffset) {
         std::vector<x86::X64Register> argRegs{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
-
 
         std::vector<x86::X64Register> kills{x86::Rax, x86::R10, x86::R11, x86::R9, x86::R8, x86::Rcx, x86::Rdx, x86::Rsi, x86::Rdi};
         std::vector<x86::X64Register> uses;
@@ -1659,14 +1452,22 @@ struct Lower {
         std::vector<BaseRegister*> usesR;
         std::vector<BaseRegister*> defsR;
 
-        for (auto it: kills) killsR.push_back(new Physical(it));
-        for (auto it: uses) usesR.push_back(new Physical(it));
-        for (auto it: defs) defsR.push_back(new Physical(it));
+        for (auto it: kills)
+            killsR.push_back(new Physical(it));
+        for (auto it: uses)
+            usesR.push_back(new Physical(it));
+        for (auto it: defs)
+            defsR.push_back(new Physical(it));
 
         // code gen
-        block->push<MOVRIP>(callReg, id);
+        if (isRipOffset) {
+            block->push<CALLRIP>(defsR, usesR, killsR, id);
+        } else {
+            block->push<MOVRIP>(callReg, id);
 
-        block->push<CALLREG>(defsR, usesR, killsR, callReg);
+            block->push<CALLREG>(defsR, usesR, killsR, callReg);
+        }
+        new CALLRIP({new Virtual{0}}, {new Virtual{0}}, {new Virtual{0}}, 0);
 
         if (ret.size() == 2) {
             block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
@@ -1676,10 +1477,12 @@ struct Lower {
         }
     }
 
+    IM matcher;
+
     struct RewriteBuilder {
         std::vector<RewriteRule*> rules;
 
-        RewriteBuilder& makeRewrite(BasePattern* p, std::function<void(Lower& l, Lower::MatchedInstructions inst, Block* block)> rev) {
+        RewriteBuilder& makeRewrite(BasePattern* p, std::function<void(Lower& l, typename IM::MatchedInstructions inst, Block* block)> rev) {
             rules.push_back(Lower::makeRewrite(p, rev));
             return *this;
         }
@@ -1701,334 +1504,347 @@ struct Lower {
         auto argCounter = 0;
         RewriteBuilder rewrites;
 
+        auto WILD = matcher.getWild();
+#define PAT(...) matcher.template makePattern<__VA_ARGS__>
+#define BIN(...) matcher.template makeBin<__VA_ARGS__>
+#define WILD(...) matcher.template makeWildPattern<__VA_ARGS__>
+
         rewrites
             .makeRewrite(
-                makePattern<instructions::Branch>(makeBin<OP::EQ, TYP::I64>(WILD, makePattern<instructions::IntLiteral>())),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::Branch)(BIN(OP::EQ, TYP::I64)(WILD, PAT(instructions::IntLiteral)())),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMPIMM>(l.getReg(inst[0, 0]->target), l.getImm(*inst[0, 1]));
                     block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
-                })
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::Branch>(makeBin<OP::EQ, TYP::I64>(WILD, WILD)),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::Branch)(BIN(OP::EQ, TYP::I64)(WILD, WILD)),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(l.getReg(inst[0, 0]->target), l.getReg(inst[0, 1]->target));
                     block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
-                })
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::Branch>(WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::Branch)(WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMPIMM>(l.getReg(*inst[0]), 1);
                     block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
-                })
+                }
+            )
 
             // cmp *, *
             // jmpe true
             // jmp false
-            // makePattern<instructions::Branch<CTX>>(makeBin<OP::EQ, TYP::I64>(WILD,WILD)),
+            // makePattern<instructions::Branch<CTX>>(BIN(OP::EQ, TYP::I64)(WILD,WILD)),
 
             // mov rax, *
             // ret
             .makeRewrite(
-                makePattern<instructions::Return>(WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::Return)(WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
                     block->push<RET>(std::initializer_list<BaseRegister*>{new Physical(x86::Rax)});
-                })
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::ReturnCompound>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::ReturnCompound)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
                     block->push<MOV>(new Physical(x86::Rdx), getReg(*inst[1]));
                     block->push<RET>(std::initializer_list<BaseRegister*>{new Physical(x86::Rax), new Physical(x86::Rdx)});
-                })
+                }
+            )
 
             // mov rax, imm
             // ret
-            .makeRewrite(
-                makePattern<instructions::Return>(makePattern<instructions::IntLiteral>()),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) { TODO() })
-
+            .makeRewrite(PAT(instructions::Return)(PAT(instructions::IntLiteral)()), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { TODO() })
 
             // mov rax, [*+imm]
             .makeRewrite(
-                makePattern<instructions::PointerLoad>(makeBin<OP::ADD, TYP::I64>(WILD, makePattern<instructions::IntLiteral>())),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<MOVMEMIMM>(getReg(*inst), getReg(*inst[0][0]), getImm(*inst[0][1]));
-                })
+                PAT(instructions::PointerLoad)(BIN(OP::ADD, TYP::I64)(WILD, PAT(instructions::IntLiteral)())),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVMEMIMM>(getReg(*inst), getReg(*inst[0][0]), getImm(*inst[0][1])); }
+            )
 
             .makeRewrite(
-                makePattern<instructions::PointerLoad>(makePattern<instructions::AllocaPtr>()),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::PointerLoad)(PAT(instructions::AllocaPtr)()),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto pLoad = inst->template cst<instructions::PointerLoad>();
                     block->push<LOADSTACK>(getReg(*inst), allocaSlots[inst[0].inst], pLoad->offset, cfg.getSize(pLoad->target));
-                })
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::PointerStore>(makePattern<instructions::AllocaPtr>(), WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::PointerStore)(PAT(instructions::AllocaPtr)(), WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<STORESTACK>(getReg(*inst[1]), allocaSlots[inst[0].inst], inst->template cst<instructions::PointerStore>()->offset);
-                })
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::PointerLoad>(WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<LOADMEM>(getReg(*inst), getReg(*inst[0]), inst->template cst<instructions::PointerLoad>()->offset);
-                })
+                PAT(instructions::PointerLoad)(WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<LOADMEM>(getReg(*inst), getReg(*inst[0]), inst->template cst<instructions::PointerLoad>()->offset); }
+            )
 
             // mov rax, [*]
             .makeRewrite(
-                makePattern<instructions::PointerStore>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<STOREMEM>(getReg(*inst[0]), getReg(*inst[1]), inst->template cst<instructions::PointerStore>()->offset);
-                })
+                PAT(instructions::PointerStore)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<STOREMEM>(getReg(*inst[0]), getReg(*inst[1]), inst->template cst<instructions::PointerStore>()->offset); }
+            )
 
             .makeRewrite(
-                makeBin<OP::MUL, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::MUL, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<MUL>(getReg(*inst), getReg(*inst[1]));
-                })
-
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::ADD, TYP::I64>(WILD, makePattern<instructions::IntLiteral>()),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::ADD, TYP::I64)(WILD, PAT(instructions::IntLiteral)()),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<ADDIMM>(getReg(*inst), getImm(*inst[1]));
-                })
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::SUB, TYP::I64>(WILD, makePattern<instructions::IntLiteral>()),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::SUB, TYP::I64)(WILD, PAT(instructions::IntLiteral)()),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<SUBIMM>(getReg(*inst), getImm(*inst[1]));
-                })
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::ADD, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::ADD, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<ADD>(getReg(*inst), getReg(*inst[1]));
-                })
-
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::SUB, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::SUB, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<SUB>(getReg(*inst), getReg(*inst[1]));
-                })
+                }
+            )
 
             // mov rax, imm
-            .makeRewrite(
-                makePattern<instructions::IntLiteral>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<MOVIMM>(getReg(*inst), getImm(*inst));
-                })
-
+            .makeRewrite(PAT(instructions::IntLiteral)(), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVIMM>(getReg(*inst), getImm(*inst)); })
 
             // ret
-            .makeRewrite(
-                makePattern<instructions::VoidReturn>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<RET>(std::initializer_list<BaseRegister*>{});
-                })
+            .makeRewrite(PAT(instructions::VoidReturn)(), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<RET>(std::initializer_list<BaseRegister*>{}); })
 
             // rax
             .makeRewrite(
-                makePattern<instructions::Arg>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::Arg)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto reg = x86::SYSV_REGS[argCounter++];
                     block->push<FAKE_DEF>(new Physical(reg));
                     block->push<MOV>(getReg(*inst), new Physical(reg));
-                })
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::AllocaPtr>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::AllocaPtr)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto alloc = allocateStack(inst->template cst<instructions::AllocaPtr>()->size, 8);
                     block->push<LEASTACK>(getReg(*inst), alloc);
                     allocaSlots[inst.inst] = alloc;
-                })
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::EQ, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::EQ, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETZ>(getReg(*inst));
-                })
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::NEQ, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::NEQ, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETNZ>(getReg(*inst));
-                })
+                }
+            )
 
             .makeRewrite(
-                makeBin<OP::LE, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::LE, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETLE>(getReg(*inst));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::GE, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::GE, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETGE>(getReg(*inst));
-                })
+                }
+            )
+
+            .makeRewrite(PAT(x86::inst::MovRip)(), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVRIP>(getReg(*inst), inst->template cst<x86::inst::MovRip>()->id); })
+
+            .makeRewrite(PAT(instructions::Assign)(WILD), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<MOV>(getReg(*inst), getReg(*inst[0])); })
 
             .makeRewrite(
-                makePattern<x86::inst::MovRip>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<MOVRIP>(getReg(*inst), inst->template cst<x86::inst::MovRip>()->id);
-                })
+                PAT(instructions::BoolLiteral)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVIMM>(getReg(*inst), (int)inst->template cst<instructions::BoolLiteral>()->value); }
+            )
 
             .makeRewrite(
-                makePattern<instructions::Assign>(WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<MOV>(getReg(*inst), getReg(*inst[0]));
-                })
+                PAT(instructions::CharLiteral)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVIMM>(getReg(*inst), (int)inst->template cst<instructions::CharLiteral>()->value); }
+            )
+
+            .makeRewrite(PAT(instructions::Jump)(), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { block->push<JMP>(getBlockForId(inst->branchTargets()[0])); })
 
             .makeRewrite(
-                makePattern<instructions::BoolLiteral>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<MOVIMM>(getReg(*inst), (int)inst->template cst<instructions::BoolLiteral>()->value);
-                })
-
-            .makeRewrite(
-                makePattern<instructions::CharLiteral>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<MOVIMM>(getReg(*inst), (int)inst->template cst<instructions::CharLiteral>()->value);
-                })
-
-            .makeRewrite(
-                makePattern<instructions::Jump>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    block->push<JMP>(getBlockForId(inst->branchTargets()[0]));
-                })
-
-            .makeRewrite(
-                makeBin<OP::LS, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::LS, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETLS>(getReg(*inst));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::GT, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::GT, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETGT>(getReg(*inst));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::LE, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::LE, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
                     block->push<SETLE>(getReg(*inst));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::AND, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::AND, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<AND>(getReg(*inst), getReg(*inst[1]));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::OR, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::OR, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<OR>(getReg(*inst), getReg(*inst[1]));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::XOR, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::XOR, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<XOR>(getReg(*inst), getReg(*inst[1]));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::SHL, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::SHL, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<MOV>(new Physical(x86::Rcx), getReg(*inst[1]));
                     block->push<SHL>(getReg(*inst));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::SHR, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::SHR, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
                     block->push<MOV>(new Physical(x86::Rcx), getReg(*inst[1]));
                     block->push<ASR>(getReg(*inst));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::DIV, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::DIV, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
                     block->push<CQO>();
                     block->push<IDIV>(getReg(*inst[1]));
                     block->push<FAKE_USE>(new Physical(x86::Rdx));
                     block->push<MOV>(getReg(*inst), new Physical(x86::Rax));
-                })
+                }
+            )
             .makeRewrite(
-                makeBin<OP::MOD, TYP::I64>(WILD, WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                BIN(OP::MOD, TYP::I64)(WILD, WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
                     block->push<CQO>();
                     block->push<IDIV>(getReg(*inst[1]));
                     block->push<FAKE_USE>(new Physical(x86::Rax));
                     block->push<MOV>(getReg(*inst), new Physical(x86::Rdx));
-                })
+                }
+            )
 
             .makeRewrite(
-                makeWildPattern<x86::inst::CallRIP<CTX>>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                WILD(x86::inst::CallRIP)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
                     std::vector<SSARegisterHandle> xd;
                     if (inst->target.isValid()) xd.push_back(inst->target);
-                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id);
-                })
+                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id, true);
+                }
+            )
 
             .makeRewrite(
-                makeWildPattern<x86::inst::CallRIP2<CTX>>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                WILD(x86::inst::CallREG)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
+                    auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
+                    std::vector<SSARegisterHandle> xd;
+                    if (inst->target.isValid()) xd.push_back(inst->target);
+                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id, false);
+                }
+            )
+
+            .makeRewrite(
+                WILD(x86::inst::CallRIP2)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
 
                     auto pepa = inst.inst->template cst<x86::inst::CallRIP2<CTX>>();
-                    l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id);
-                })
+                    l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id, true);
+                }
+            )
 
             .makeRewrite(
-                makePattern<instructions::BoolNot>(WILD),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                PAT(instructions::BoolNot)(WILD),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<XOR>(getReg(*inst), getReg(*inst));
                     block->push<TEST>(getReg(*inst[0]), getReg(*inst[0]));
                     block->push<SETZ>(getReg(*inst));
-                })
+                }
+            )
+
+            .makeRewrite(WILD(instructions::BitExtract)(), [&](Lower& l, IM::MatchedInstructions inst, Block* block) { TODO() })
 
             .makeRewrite(
-                makeWildPattern<instructions::BitExtract<CTX>>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-                    TODO()
-                })
-
-            .makeRewrite(
-                makeWildPattern<instructions::Builtin<CTX>>(),
-                [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
+                WILD(instructions::Builtin<CTX>)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     if (inst->template cst<instructions::Builtin>()->type == "trap") {
                         block->push<INT3>();
                     } else {
                         TODO()
                     }
-                })
+                }
+            )
 
-        .makeRewrite(
-            makeWildPattern<instructions::Dummy<CTX>>(),
-            [&](Lower& l, Lower::MatchedInstructions inst, Block* block) {
-            });
+            .makeRewrite(WILD(instructions::Dummy)(), [&](Lower& l, IM::MatchedInstructions inst, Block* block) {});
+
+#undef PAT
+#undef WILD
+#undef BIN
 
         matchCFG(cfg, rewrites.rules);
 
