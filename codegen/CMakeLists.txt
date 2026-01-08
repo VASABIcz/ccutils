@@ -34,10 +34,10 @@ add_library(vi_codegen_x86 OBJECT
         x86/X86Assembler.cpp
         x86/RegAlloc.h
         x86/RegAlloc.cpp
-        x86/x86_insts.h
-        x86/emit_x86.h
         x86/spillStage.h
         x86/decomposeStage.h
+        x86/ir/Graph.h
+        x86/ir/Lower.h
 )
 
 target_link_libraries(vi_codegen PRIVATE ccutils)
@@ -62,7 +62,9 @@ add_definitions(${LLVM_DEFINITIONS})
 add_executable(llvm_toy llvm/llvm_toy.cpp
         allocators/SimpleAllocator.h
         allocators/NewAllocator.h
-        allocators/OtherAllocator.h)
+        allocators/OtherAllocator.h
+        x86/ir/Registers.hpp
+        x86/ir/forward.hpp)
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
 llvm_map_components_to_libnames(llvm_libs support core irreader)
