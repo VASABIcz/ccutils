@@ -34,7 +34,6 @@ add_library(vi_codegen_x86 OBJECT
         x86/X86Assembler.cpp
         x86/RegAlloc.h
         x86/RegAlloc.cpp
-        x86/spillStage.h
         x86/decomposeStage.h
         x86/ir/Graph.h
         x86/ir/Lower.h
@@ -43,35 +42,36 @@ add_library(vi_codegen_x86 OBJECT
 target_link_libraries(vi_codegen PRIVATE ccutils)
 target_link_libraries(vi_codegen_x86 PRIVATE ccutils)
 
-set(LLVM_TARGETS_TO_BUILD "X86")
 
-find_package(LLVM REQUIRED CONFIG)
 
-message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+if (USE_LLVM)
+    set(LLVM_TARGETS_TO_BUILD "X86")
 
-# Set your project compile flags.
-# E.g. if using the C++ header files
-# you will need to enable C++11 support
-# for your compiler.
+    find_package(LLVM REQUIRED CONFIG)
 
-include_directories(${LLVM_INCLUDE_DIRS})
-add_definitions(${LLVM_DEFINITIONS})
+    message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+    message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-# Now build our tools
-add_executable(llvm_toy llvm/llvm_toy.cpp
-        allocators/SimpleAllocator.h
-        allocators/NewAllocator.h
-        allocators/OtherAllocator.h
-        x86/ir/Registers.hpp
-        x86/ir/forward.hpp)
-# Find the libraries that correspond to the LLVM components
-# that we wish to use
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+    # Set your project compile flags.
+    # E.g. if using the C++ header files
+    # you will need to enable C++11 support
+    # for your compiler.
 
-# Link against LLVM libraries
-# target_link_libraries(llvm_toy ${llvm_libs})
-target_link_libraries(llvm_toy LLVM)
+    include_directories(${LLVM_INCLUDE_DIRS})
+    add_definitions(${LLVM_DEFINITIONS})
 
-add_executable(x86_ir x86/x86IR.cpp)
-target_link_libraries(x86_ir PRIVATE ccutils)
+    # Now build our tools
+    add_executable(llvm_toy llvm/llvm_toy.cpp
+            allocators/SimpleAllocator.h
+            allocators/NewAllocator.h
+            allocators/OtherAllocator.h
+            x86/ir/Registers.hpp
+            x86/ir/forward.hpp)
+    # Find the libraries that correspond to the LLVM components
+    # that we wish to use
+    llvm_map_components_to_libnames(llvm_libs support core irreader)
+
+    # Link against LLVM libraries
+    # target_link_libraries(llvm_toy ${llvm_libs})
+    target_link_libraries(llvm_toy LLVM)
+endif ()
