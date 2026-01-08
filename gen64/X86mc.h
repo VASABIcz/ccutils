@@ -557,6 +557,11 @@ public:
 
     void callMC(size_t address);
 
+    ImmSpace callRIP(int32_t offset) {
+        pushBack(0xe8);
+        return writeImmValue(offset);
+    }
+
     void writeSusInst(SusX64Instruction inst);
 
     void setCC(const x86::X64Register& dest, CmpType type);
