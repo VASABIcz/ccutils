@@ -16,9 +16,7 @@ struct StackAllocator {
         return stackAllocations[handle];
     }
 
-    size_t stackSize() const {
-        return stack.size();
-    }
+    size_t stackSize() const { return stack.size(); }
 
     void clear() {
         for (auto i = 0UL; i < stack.size(); i++) {
@@ -67,7 +65,7 @@ struct StackAllocator {
 
         for (auto i: views::iota(0u, stack.size())) {
             auto ref = stack[i];
-            if (!ref && (i+amountBytes <= stack.size()) && canAllocateStackRange(i, amountBytes)) {
+            if (!ref && (i + amountBytes <= stack.size()) && canAllocateStackRange(i, amountBytes)) {
                 allocateStackRange(i, amountBytes);
 
                 return allocateStackHandle(i);
@@ -76,16 +74,14 @@ struct StackAllocator {
 
         auto allocationStart = stack.size();
         for (auto i: views::iota(0u, amountBytes)) {
-            (void) i;
+            (void)i;
             stack.push_back(true);
         }
 
         return allocateStackHandle(allocationStart);
     }
 
-    size_t numAllocs() const {
-        return stackAllocations.size();
-    }
+    size_t numAllocs() const { return stackAllocations.size(); }
 
     void freeStack(size_t handle) {
         auto rawOffset = getStackOffset(handle);

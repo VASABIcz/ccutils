@@ -1,7 +1,7 @@
 #pragma once
 #include "CodeGen.h"
-#include "optimizations.h"
 #include "allocators/Allocator.h"
+#include "optimizations.h"
 
 template<typename CTX>
 size_t CodeGen<CTX>::getJmpLabelForBlock(BlockId block) {
@@ -15,17 +15,17 @@ size_t CodeGen<CTX>::getJmpLabelForBlock(BlockId block) {
 template<typename CTX>
 void CodeGen<CTX>::doDumpGraphPNG() {
     string buf = "digraph {\n";
-    for (const auto& node : irGen.graph.validNodesConst()) {
+    for (const auto& node: irGen.graph.validNodesConst()) {
         auto text = node->toString();
         buf += stringify("{} [label=\\\"{}\\\"] [shape=box] [xlabel=\\\"{}\\\"]\n", node->blockId, text, node->tag);
         bool pepa = true;
-        for (auto tgt : node->getTargets()) {
+        for (auto tgt: node->getTargets()) {
             buf += stringify("{} -> {} [color=red] [label=\\\"{}\\\"]\n", node->blockId, tgt, pepa ? "true" : "false");
             pepa = !pepa;
         }
     }
-    for (auto i : views::iota(0u, flatBlocks.size()-1)) {
-        buf += stringify("{} -> {} [color=blue]\n", flatBlocks[i], flatBlocks[i+1]);
+    for (auto i: views::iota(0u, flatBlocks.size() - 1)) {
+        buf += stringify("{} -> {} [color=blue]\n", flatBlocks[i], flatBlocks[i + 1]);
     }
     buf += "}";
 
@@ -37,7 +37,7 @@ Result<void> CodeGen<CTX>::gen() {
     // optimizePhis<CTX>(irGen);
     // optimizePhis<CTX>(irGen);
     // optimizePhis<CTX>(irGen);
-    irGen.graph.genPhis();
+    // irGen.graph.genPhis();
 
     if (false) {
         println("=== BEFOR FLAT ===");
@@ -52,10 +52,10 @@ Result<void> CodeGen<CTX>::gen() {
     currentLiveRanges = LiveRanges{liveRanges(flatBlocks)};
 
     ControlFlowGraph<CTX>& g = irGen.graph;
+/*
 
     auto [tt, lookup] = g.blockOffsets(flatBlocks);
-
-    /*        g.forEachInstruction([&](auto& inst, auto& block, auto id) {
+            g.forEachInstruction([&](auto& inst, auto& block, auto id) {
             if (inst.template is<X86Call>()) {
                 for (auto reg : x86::SYSV_CALLER) {
                     auto intId = currentLiveRanges.addRange(SSARegisterHandle::invalid());
@@ -63,7 +63,8 @@ Result<void> CodeGen<CTX>::gen() {
                     currentLiveRanges.appendRange(intId, lookup[block.id()]+id, true);
                 }
             }
-        });*/
+        });
+*/
 
     fixUnliveRanges();
     fixupPhiLiveRanges(flatBlocks);
@@ -96,14 +97,16 @@ Result<void> CodeGen<CTX>::gen() {
 
     return {};
 }
+
 template<typename CTX>
 void CodeGen<CTX>::generateIR() {
-    for (auto blockId : flatBlocks) {
+    for (auto blockId: flatBlocks) {
         auto& current = irGen.getBlock(blockId);
 
         generateCodeBlock(current);
     }
 }
+
 template<typename CTX>
 void CodeGen<CTX>::generateCodeBlock(const CodeGen::BaseBlock& block) {
     assembler.createLabel(getJmpLabelForBlock(block.id()));
@@ -120,6 +123,7 @@ void CodeGen<CTX>::generateCodeBlock(const CodeGen::BaseBlock& block) {
 
     generateInstructions(instructions);
 }
+
 template<typename CTX>
 void CodeGen<CTX>::assignPhis(BlockId targetBlock) {
     const auto& block = irGen.getBlock(targetBlock);
@@ -133,29 +137,31 @@ void CodeGen<CTX>::assignPhis(BlockId targetBlock) {
     // 1:1 := phi 0: 0:1, 1: 1:0
     // FIXME this could be optimized to use only single temp register
     // TODO we would need to find dependency cicles
-    for (auto [phiSources, phiTarget] : phiFunctions) {
+    for (auto [phiSources, phiTarget]: phiFunctions) {
         // std::cout << "ALLOCATING TMP FOR " << sizeBytes(pi.first) << " - " << pi.first.toString() << std::endl;
         auto tmpPhi = allocateTemp(sizeBytes(phiSources));
         assembler.movReg(tmpPhi, getReg(phiSources), 0, 0, sizeBytes(phiSources));
         atomicPhis.emplace_back(getReg(phiTarget), make_pair(tmpPhi, sizeBytes(phiSources)));
     }
 
-    for (auto [targetPhi, other] : atomicPhis) {
+    for (auto [targetPhi, other]: atomicPhis) {
         auto [tmpSourcePhi, size] = other;
         assembler.movReg(targetPhi, tmpSourcePhi, 0, 0, size);
         freeTemp(tmpSourcePhi);
     }
 }
+
 template<typename CTX>
 vector<typename CodeGen<CTX>::RegisterHandle> CodeGen<CTX>::getRegs(span<SSARegisterHandle> regs) {
     vector<RegisterHandle> buf;
 
-    for (auto reg : regs) {
+    for (auto reg: regs) {
         buf.push_back(getReg(reg));
     }
 
     return buf;
 }
+
 template<typename CTX>
 bool CodeGen<CTX>::mustAssignPhis(BlockId targetBlock) {
     const auto& block = irGen.getBlock(targetBlock);
@@ -163,15 +169,17 @@ bool CodeGen<CTX>::mustAssignPhis(BlockId targetBlock) {
 
     return not pis.empty();
 }
+
 template<typename CTX>
 size_t CodeGen<CTX>::getBasicBlockOffset(BlockId id, std::span<BlockId> linearized) {
     size_t acu = 0;
-    for (auto bb : linearized) {
+    for (auto bb: linearized) {
         if (bb == id) return acu;
         acu += getBlock(bb).instructions.size();
     }
     return 0;
 }
+
 template<typename CTX>
 void CodeGen<CTX>::fixUnliveRanges() {
     irGen.graph.forEachInstruction([&](auto& inst) {
@@ -182,23 +190,25 @@ void CodeGen<CTX>::fixUnliveRanges() {
         currentLiveRanges.addRange(tgt);
     });
 }
+
 template<typename CTX>
 void CodeGen<CTX>::fixupPhiLiveRanges(std::span<BlockId> linearized) {
     irGen.graph.forEachInstruction([&](auto& inst) {
         if (auto phi = inst.template cst<instructions::PhiFunction<CTX>>(); phi) {
-            for (auto [block, value] : phi->getRawVersions()) {
+            for (auto [block, value]: phi->getRawVersions()) {
                 auto offset = getBasicBlockOffset(block, linearized);
                 auto size = getBlock(block).getInstructions().size();
                 if (not currentLiveRanges.contains(phi->target)) {
                     return;
                 }
                 assert(currentLiveRanges.contains(phi->target));
-                assert(offset+size-1 < currentLiveRanges.length());
-                currentLiveRanges.appendRange(phi->target, offset+size-1, true);
+                assert(offset + size - 1 < currentLiveRanges.length());
+                currentLiveRanges.appendRange(phi->target, offset + size - 1, true);
             }
         }
     });
 }
+
 template<typename CTX>
 void CodeGen<CTX>::beforeInstruction(IRInstruction* instruction) {
     this->assembler.nop();
@@ -207,6 +217,7 @@ void CodeGen<CTX>::beforeInstruction(IRInstruction* instruction) {
     instruction->print(ss);
     assembler.bindHint(ss.str());
 }
+
 template<typename CTX>
 void CodeGen<CTX>::generateInstruction(IRInstruction* instruction) {
     beforeInstruction(instruction);
@@ -215,14 +226,15 @@ void CodeGen<CTX>::generateInstruction(IRInstruction* instruction) {
 
     assertStableRegs(instruction, [&] {
         this->assembler.beforeInstruction();
-        instruction->generate(static_cast<CTX::GEN &>(*this));
+        instruction->generate(static_cast<CTX::GEN&>(*this));
     });
 
     allocator->afterInst(*instruction, currentInstructionCounter);
 }
+
 template<typename CTX>
 void CodeGen<CTX>::generateInstructions(const vector<CopyPtr<IRInstruction>>& instructions) {
-    for (const auto& instruction : instructions) {
+    for (const auto& instruction: instructions) {
         generateInstruction(instruction.get());
         currentInstructionCounter++;
         if (instruction->isTerminal()) break;
@@ -233,16 +245,16 @@ template<typename CTX>
 void CodeGen<CTX>::doPrintLinearized() {
     irGen.graph.printRegisters();
 
-    auto max_value = currentLiveRanges.length()-1; // FIXME this aint right
+    auto max_value = currentLiveRanges.length() - 1; // FIXME this aint right
     auto max_value_len = to_string(max_value).size();
 
     println("== BINARY LAYOUT == {}", name);
     auto id = 0u;
-    for (auto blockId : flatBlocks) {
+    for (auto blockId: flatBlocks) {
         cout << string(max_value_len, ' ') << " # " << blockId.toString() << " (" << getBlock(blockId).tag << ")" << (getBlock(blockId).isLoopHeader() ? " loop-header" : "") << endl;
-        for (const auto& inst : irGen.getBlock(blockId).instructions) {
+        for (const auto& inst: irGen.getBlock(blockId).instructions) {
             auto ajd = to_string(id);
-            cout << ajd << string(max_value_len-ajd.size(), ' ') << " | ";
+            cout << ajd << string(max_value_len - ajd.size(), ' ') << " | ";
             inst->print();
             id++;
         }
