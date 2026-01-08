@@ -5,12 +5,31 @@
 
 namespace x86::inst {
     template<typename CTX>
-    struct CallRIP: public NamedIrInstruction<"x86_call", CTX> {
+    struct CallRIP: public NamedIrInstruction<"x86_call_rip", CTX> {
         PUB_VIRTUAL_COPY(CallRIP)
         std::vector<SSARegisterHandle> argz;
         size_t id;
 
-        CallRIP(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call", CTX>(target), argz(std::move(argz)), id(id) {}
+        CallRIP(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call_rip", CTX>(target), argz(std::move(argz)), id(id) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& arg : argz) fn(arg);
+        }
+
+        void generate(CTX::GEN& gen) override {}
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", argz);
+        }
+    };
+
+    template<typename CTX>
+    struct CallREG: public NamedIrInstruction<"x86_call_reg", CTX> {
+        PUB_VIRTUAL_COPY(CallREG)
+        std::vector<SSARegisterHandle> argz;
+        size_t id;
+
+        CallREG(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call_reg", CTX>(target), argz(std::move(argz)), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             for (auto& arg : argz) fn(arg);
