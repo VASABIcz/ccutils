@@ -2,6 +2,7 @@
 #include "Graph.h"
 #include "X86Instruction.hpp"
 #include "utils/Logger.h"
+#include "codegen/x86/x86_insts.h"
 #include <map>
 #include <set>
 

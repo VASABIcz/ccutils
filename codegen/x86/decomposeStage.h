@@ -144,4 +144,6 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
             );
         });
     }
+
+    patcher.execute();
 }

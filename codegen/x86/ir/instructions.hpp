@@ -322,10 +322,6 @@ struct STOREMEM: X86Instruction {
     }
 };
 
-struct StackSlot {
-    size_t id = 999'999;
-};
-
 struct STORESTACK: X86Instruction {
     DEBUG_INFO2(STORESTACK)
 

@@ -6,6 +6,8 @@
 #include "Block.h"
 #include "ranges.hpp"
 #include "print_utils.h"
+#include "Registers.hpp"
+#include "instructions.hpp"
 
 struct Graph {
     Graph(std::shared_ptr<Logger> logger) : logger(logger) {}

@@ -51,7 +51,7 @@ Result<void> CodeGen<CTX>::gen() {
 
     currentLiveRanges = LiveRanges{liveRanges(flatBlocks)};
 
-    ControlFlowGraph<CTX>& g = irGen.graph;
+    // ControlFlowGraph<CTX>& g = irGen.graph;
 /*
 
     auto [tt, lookup] = g.blockOffsets(flatBlocks);

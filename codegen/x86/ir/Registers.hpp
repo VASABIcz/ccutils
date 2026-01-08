@@ -30,3 +30,7 @@ struct Virtual: BaseRegister {
 
     std::string toString() const override { return stringify("v{}", id); }
 };
+
+struct StackSlot {
+    size_t id = 999'999;
+};
