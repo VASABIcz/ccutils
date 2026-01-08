@@ -24,6 +24,7 @@ add_library(vi_codegen OBJECT
         CodeGenImpl.h
         JumpCondType.h
         CFGPatcher.h
+        InstructionMatcher.hpp
 )
 
 add_library(vi_codegen_x86 OBJECT
