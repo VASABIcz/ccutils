@@ -185,7 +185,7 @@ void move() {}
         if (!x.has_value()) return;                                                                                                                                                                    \
         *x                                                                                                                                                                                             \
     })
-#define repeat1(n) for (auto it = (size_t)0; it < n; it++)
+#define repeat1(n) for (auto it = (size_t)0; it < (n); it++)
 #define PRINTW(n) cout << string((n) * 2, ' ')
 // #define IFD if (DEBUG)
 typedef uint8_t u8;
