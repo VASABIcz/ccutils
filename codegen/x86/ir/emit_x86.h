@@ -13,7 +13,7 @@
 
 struct EmitCtx {
     // ins
-    const std::map<size_t, x86::X64Register>& regMap;
+    const std::map<VHAND, x86::X64Register>& regMap;
     X86mc& mc;
     Graph& g;
 
@@ -25,12 +25,8 @@ struct EmitCtx {
     std::map<Block*, size_t> blockOffs;
 
     auto getReg(BaseRegister* r) -> x86::X64Register {
-        if (auto v = r->as<Virtual>(); v) {
-            assert(regMap.contains(v->id));
-            return regMap.at(v->id);
-        } else {
-            return r->as<Physical>()->id;
-        }
+        assert(regMap.contains(r->getId()));
+        return regMap.at(r->getId());
     };
 
     auto requestOffset(size_t id, ImmSpace space) { symbols[id].push_back(space); };
@@ -61,31 +57,31 @@ struct EmitCtx {
         bool didMatch = true;
         dispatch(
             inst,
-            CASE_VAL(MOV*) { mc.movReg(getReg(it->defs[0]), getReg(it->uses[0])); },
-            CASE_VAL(MOVIMM*) { mc.movFast(getReg(it->defs[0]), it->value); },
-            CASE_VAL(ADD*) { mc.writeRegInst(X64Instruction::add, getReg(it->defs[0]), getReg(it->uses[1])); },
-            CASE_VAL(SUB*) { mc.writeRegInst(X64Instruction::sub, getReg(it->defs[0]), getReg(it->uses[1])); },
+            CASE_VAL(MOV*) { mc.movReg(getReg(it->getDef(0)), getReg(it->getUse(0))); },
+            CASE_VAL(MOVIMM*) { mc.movFast(getReg(it->getDef(0)), it->value); },
+            CASE_VAL(ADD*) { mc.writeRegInst(X64Instruction::add, getReg(it->getDef(0)), getReg(it->getUse(1))); },
+            CASE_VAL(SUB*) { mc.writeRegInst(X64Instruction::sub, getReg(it->getDef(0)), getReg(it->getUse(1))); },
             CASE_VAL(RET*) {
                 mc.leave();
                 mc.ret();
             },
             CASE_VAL(MOVRIP*) {
-                auto sym = mc.writeRegRipInst(X64Instruction::mov, getReg(it->defs[0]), 0);
+                auto sym = mc.writeRegRipInst(X64Instruction::mov, getReg(it->getDef(0)), 0);
                 requestOffset(it->id, sym);
             },
-            CASE_VAL(ADDIMM*) { mc.addImm32(getReg(it->defs[0]), it->imm); },
-            CASE_VAL(SUBIMM*) { mc.subImm32(getReg(it->defs[0]), it->imm); },
-            CASE_VAL(MOVMEMIMM*) { mc.readMem(getReg(it->defs[0]), getReg(it->uses[0]), it->imm, 8); },
-            CASE_VAL(LOADMEM*) { mc.readMem(getReg(it->defs[0]), getReg(it->uses[0]), it->offset, 8); },
-            CASE_VAL(STOREMEM*) { mc.writeMem(getReg(it->uses[0]), getReg(it->uses[1]), it->offset, 8); },
-            CASE_VAL(CMP*) { mc.writeRegInst(X64Instruction::cmp, getReg(it->uses[0]), getReg(it->uses[1])); },
-            CASE_VAL(TEST*) { mc.writeRegInst(X64Instruction::test, getReg(it->uses[0]), getReg(it->uses[1])); },
+            CASE_VAL(ADDIMM*) { mc.addImm32(getReg(it->getDef(0)), it->imm); },
+            CASE_VAL(SUBIMM*) { mc.subImm32(getReg(it->getDef(0)), it->imm); },
+            CASE_VAL(MOVMEMIMM*) { mc.readMem(getReg(it->getDef(0)), getReg(it->getUse(0)), it->imm, 8); },
+            CASE_VAL(LOADMEM*) { mc.readMem(getReg(it->getDef(0)), getReg(it->getUse(0)), it->offset, 8); },
+            CASE_VAL(STOREMEM*) { mc.writeMem(getReg(it->getUse(0)), getReg(it->getUse(1)), it->offset, 8); },
+            CASE_VAL(CMP*) { mc.writeRegInst(X64Instruction::cmp, getReg(it->getUse(0)), getReg(it->getUse(1))); },
+            CASE_VAL(TEST*) { mc.writeRegInst(X64Instruction::test, getReg(it->getUse(0)), getReg(it->getUse(1))); },
             CASE_VAL(CALLREG*) { mc.call(getReg(it->reg)); },
             CASE_VAL(CALLRIP*) {
                 auto imm = mc.callRIP(0);
                 requestOffset(it->id, imm);
             },
-            CASE_VAL(CMPIMM*) { mc.cmp64Imm(getReg(it->uses[0]), it->imm); },
+            CASE_VAL(CMPIMM*) { mc.cmp64Imm(getReg(it->getUse(0)), it->imm); },
             CASE_VAL(JZ*) {
                 auto imm = mc.writeJmp(CmpType::Equal, 0_u32);
                 requestJmp(it->tgt, imm);
@@ -95,54 +91,54 @@ struct EmitCtx {
                 requestJmp(it->tgt, imm);
             },
             CASE_VAL(LEASTACK*) {
-                auto imm = mc.lea(getReg(it->defs[0]), x86::Rsp, 0);
+                auto imm = mc.lea(getReg(it->getDef(0)), x86::Rsp, 0);
                 requestStack(it->slot, imm);
             },
             CASE_VAL(STORESTACK*) {
-                auto imm = mc.writeStack(500'000, getReg(it->uses[0]));
+                auto imm = mc.writeStack(500'000, getReg(it->getUse(0)));
                 requestStack(it->slot, imm, it->offset);
             },
             CASE_VAL(LOADSTACK*) {
-                auto imm = mc.readStack(getReg(it->defs[0]), it->size, 500'000);
+                auto imm = mc.readStack(getReg(it->getDef(0)), it->size, 500'000);
                 requestStack(it->slot, imm, it->offset);
             },
-            CASE_VAL(MUL*) { mc.writeRegInst(SusX64Instruction::imul, getReg(it->defs[0]), getReg(it->uses[1])); },
+            CASE_VAL(MUL*) { mc.writeRegInst(SusX64Instruction::imul, getReg(it->getDef(0)), getReg(it->getUse(1))); },
             CASE_VAL(INT3*) { mc.trap(); },
             CASE_VAL(SETZ*) {
-                mc.setCC(getReg(it->defs[0]), CmpType::Equal);
-                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                mc.setCC(getReg(it->getDef(0)), CmpType::Equal);
+                mc.writeMovZX8(getReg(it->getDef(0)), getReg(it->getDef(0)));
             },
             CASE_VAL(SETNZ*) {
-                mc.setCC(getReg(it->defs[0]), CmpType::NotEqual);
-                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                mc.setCC(getReg(it->getDef(0)), CmpType::NotEqual);
+                mc.writeMovZX8(getReg(it->getDef(0)), getReg(it->getDef(0)));
             },
             CASE_VAL(SETGT*) {
-                mc.setCC(getReg(it->defs[0]), CmpType::Greater);
-                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                mc.setCC(getReg(it->getDef(0)), CmpType::Greater);
+                mc.writeMovZX8(getReg(it->getDef(0)), getReg(it->getDef(0)));
             },
             CASE_VAL(SETGE*) {
-                mc.setCC(getReg(it->defs[0]), CmpType::GreaterOrEqual);
-                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                mc.setCC(getReg(it->getDef(0)), CmpType::GreaterOrEqual);
+                mc.writeMovZX8(getReg(it->getDef(0)), getReg(it->getDef(0)));
             },
             CASE_VAL(SETLS*) {
-                mc.setCC(getReg(it->defs[0]), CmpType::Less);
-                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                mc.setCC(getReg(it->getDef(0)), CmpType::Less);
+                mc.writeMovZX8(getReg(it->getDef(0)), getReg(it->getDef(0)));
             },
             CASE_VAL(SETLE*) {
-                mc.setCC(getReg(it->defs[0]), CmpType::LessOrEqual);
-                mc.writeMovZX8(getReg(it->defs[0]), getReg(it->defs[0]));
+                mc.setCC(getReg(it->getDef(0)), CmpType::LessOrEqual);
+                mc.writeMovZX8(getReg(it->getDef(0)), getReg(it->getDef(0)));
             },
-            CASE_VAL(XOR*) { mc.writeRegInst(X64Instruction::xorI, getReg(it->defs[0]), getReg(it->uses[1])); },
+            CASE_VAL(XOR*) { mc.writeRegInst(X64Instruction::xorI, getReg(it->getDef(0)), getReg(it->getUse(1))); },
             CASE_VAL(CQO*) { mc.cqo(); },
-            CASE_VAL(IDIV*) { mc.signedDivide(getReg(it->uses[0])); },
-            CASE_VAL(IDIV*) { mc.signedDivide(getReg(it->uses[0])); },
-            CASE_VAL(AND*) { mc.writeRegInst(X64Instruction::And, getReg(it->defs[0]), getReg(it->uses[1])); },
-            CASE_VAL(OR*) { mc.writeRegInst(X64Instruction::Or, getReg(it->defs[0]), getReg(it->uses[1])); },
-            CASE_VAL(ASR*) { mc.shiftRightByCl(getReg(it->defs[0])); },
+            CASE_VAL(IDIV*) { mc.signedDivide(getReg(it->getUse(0))); },
+            CASE_VAL(IDIV*) { mc.signedDivide(getReg(it->getUse(0))); },
+            CASE_VAL(AND*) { mc.writeRegInst(X64Instruction::And, getReg(it->getDef(0)), getReg(it->getUse(1))); },
+            CASE_VAL(OR*) { mc.writeRegInst(X64Instruction::Or, getReg(it->getDef(0)), getReg(it->getUse(1))); },
+            CASE_VAL(ASR*) { mc.shiftRightByCl(getReg(it->getDef(0))); },
             CASE_VAL(SHR*) { TODO() },
-            CASE_VAL(SHL*) { mc.shiftLeftByCl(getReg(it->defs[0])); },
-            CASE_VAL(PUSH*) { mc.push(getReg(it->uses[0])); },
-            CASE_VAL(POP*) { mc.pop(getReg(it->defs[0])); },
+            CASE_VAL(SHL*) { mc.shiftLeftByCl(getReg(it->getDef(0))); },
+            CASE_VAL(PUSH*) { mc.push(getReg(it->getUse(0))); },
+            CASE_VAL(POP*) { mc.pop(getReg(it->getDef(0))); },
             CASE_VAL(FAKE_DEF*){},
             CASE_VAL(FAKE_USE*){},
             CASE_VAL(X86Instruction*) { didMatch = false; }

@@ -9,7 +9,7 @@
 template<typename CTX>
 struct Lower {
     using IM = InstructionMatcher<CTX>;
-    std::map<SSARegisterHandle, size_t> virtRegs;
+    std::map<SSARegisterHandle, BaseRegister*> virtRegs;
     std::map<void*, StackSlot> allocaSlots;
     Graph g;
 
@@ -27,7 +27,7 @@ struct Lower {
             if (saveType != x86::X64Register::SaveType::Callee) continue;
 
             ss[reg] = this->allocateStack(8, 8);
-            g.root->insertBefore(g.root->first, new STORESTACK(new Physical(reg), ss[reg], 0));
+            g.root->insertBefore(g.root->first, new STORESTACK(g.getReg(reg), ss[reg], 0));
         }
 
         for (auto block: g.blocks) {
@@ -37,7 +37,7 @@ struct Lower {
                         auto saveType = x86::sysVSave(reg);
                         if (saveType != x86::X64Register::SaveType::Callee) continue;
 
-                        block->insertBefore(inst, new LOADSTACK(new Physical(reg), ss[reg], 0, 8));
+                        block->insertBefore(inst, new LOADSTACK(g.getReg(reg), ss[reg], 0, 8));
                     }
                 }
             }
@@ -79,7 +79,7 @@ struct Lower {
     std::map<BlockId, Block*> blocks;
     Block* getBlockForId(BlockId id) {
         if (not blocks.contains(id)) {
-            blocks.emplace(id, new Block(blocks.size()));
+            blocks.emplace(id, g.makeBlock());
         }
 
         return blocks.at(id);
@@ -99,22 +99,18 @@ struct Lower {
             doConsuming(cfg, globalConsumed, patterns, cur, bb);
             // bb->insertPoint = 0;
         }
-
-        g.blocks.push_back(bb);
     }
 
-    Virtual* getReg(SSARegisterHandle hand) {
+    BaseRegister* getReg(SSARegisterHandle hand) {
         assert(hand.isValid());
         if (!virtRegs.contains(hand)) {
-            virtRegs[hand] = g.allocVirtId();
+            virtRegs[hand] = g.allocaVirtReg();
         }
 
-        return new Virtual{virtRegs[hand]};
+        return virtRegs[hand];
     }
 
-    Virtual* allocReg() { return g.allocaVirtReg(); }
-
-    Virtual* getReg(IRInstruction<CTX>* hand) { return getReg(hand->target); }
+    BaseRegister* getReg(IRInstruction<CTX>* hand) { return getReg(hand->target); }
 
     long getImm(IRInstruction<CTX>* inst) {
         if (auto intLit = inst->template cst<instructions::IntLiteral>(); intLit) {
@@ -129,7 +125,7 @@ struct Lower {
         cfg.forEachBlock([&](CodeBlock<CTX>& block) { matchBlock(cfg, block, patterns); });
     }
 
-    void emitCall(std::vector<SSARegisterHandle> ret, std::span<IRInstruction<CTX>*> argz, Block* block, size_t id, bool isRipOffset) {
+    void emitCall(std::vector<SSARegisterHandle> ret, std::span<IRInstruction<CTX>*> argz, Block* block, std::variant<BaseRegister*, size_t> isRipOffset) {
         std::vector<x86::X64Register> argRegs{x86::Rdi, x86::Rsi, x86::Rdx, x86::Rcx, x86::R8, x86::R9};
 
         std::vector<x86::X64Register> kills{x86::Rax, x86::R10, x86::R11, x86::R9, x86::R8, x86::Rcx, x86::Rdx, x86::Rsi, x86::Rdi};
@@ -137,7 +133,7 @@ struct Lower {
         std::vector<x86::X64Register> defs;
 
         for (auto i = 0ul; i < argz.size(); i++) {
-            block->push<MOV>(new Physical(argRegs[i]), getReg(argz[i]));
+            block->push<MOV>(g.getReg(argRegs[i]), getReg(argz[i]));
             uses.push_back(kills.back());
             kills.pop_back();
         }
@@ -151,35 +147,30 @@ struct Lower {
             defs.push_back(x86::Rax);
         }
 
-        auto callReg = allocReg();
-
         std::vector<BaseRegister*> killsR;
         std::vector<BaseRegister*> usesR;
         std::vector<BaseRegister*> defsR;
 
         for (auto it: kills)
-            killsR.push_back(new Physical(it));
+            killsR.push_back(g.getReg(it));
         for (auto it: uses)
-            usesR.push_back(new Physical(it));
+            usesR.push_back(g.getReg(it));
         for (auto it: defs)
-            defsR.push_back(new Physical(it));
+            defsR.push_back(g.getReg(it));
 
         // code gen
-        if (isRipOffset) {
-            block->push<CALLRIP>(defsR, usesR, killsR, id);
-        } else {
-            block->push<MOVRIP>(callReg, id);
-
-            block->push<CALLREG>(defsR, usesR, killsR, callReg);
-        }
-        new CALLRIP({new Virtual{0}}, {new Virtual{0}}, {new Virtual{0}}, 0);
+        Variant(isRipOffset).match(
+            CASE_VAL(BaseRegister*) { block->push<CALLREG>(defsR, usesR, killsR, it); },
+            CASE_VAL(size_t) { block->push<CALLRIP>(defsR, usesR, killsR, it); }
+        );
 
         if (ret.size() == 2) {
-            block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
-            block->push<MOV>(getReg(ret[1]), new Physical(x86::Rdx));
+            block->push<MOV>(getReg(ret[0]), g.getReg(x86::Rax));
+            block->push<MOV>(getReg(ret[1]), g.getReg(x86::Rdx));
         } else if (ret.size() == 1) {
-            block->push<MOV>(getReg(ret[0]), new Physical(x86::Rax));
+            block->push<MOV>(getReg(ret[0]), g.getReg(x86::Rax));
         }
+
     }
 
     IM matcher;
@@ -203,6 +194,8 @@ struct Lower {
         println("=== END X86 GRAPH ===");
     }
 
+    BaseRegister* FLAGS = g.allocaVirtReg();
+
     void lowerIR(ControlFlowGraph<CTX>& cfg) {
         using OP = Assembler::BinaryOp;
         using TYP = Assembler::BaseDataType;
@@ -218,8 +211,8 @@ struct Lower {
             .makeRewrite(
                 PAT(instructions::Branch)(BIN(OP::EQ, TYP::I64)(WILD, PAT(instructions::IntLiteral)())),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMPIMM>(l.getReg(inst[0, 0]->target), l.getImm(*inst[0, 1]));
-                    block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
+                    block->push<CMPIMM>(FLAGS, l.getReg(inst[0, 0]->target), l.getImm(*inst[0, 1]));
+                    block->push<JZ>(FLAGS, l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
                 }
             )
@@ -227,8 +220,8 @@ struct Lower {
             .makeRewrite(
                 PAT(instructions::Branch)(BIN(OP::EQ, TYP::I64)(WILD, WILD)),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(l.getReg(inst[0, 0]->target), l.getReg(inst[0, 1]->target));
-                    block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
+                    block->push<CMP>(FLAGS, l.getReg(inst[0, 0]->target), l.getReg(inst[0, 1]->target));
+                    block->push<JZ>(FLAGS, l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
                 }
             )
@@ -236,8 +229,8 @@ struct Lower {
             .makeRewrite(
                 PAT(instructions::Branch)(WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMPIMM>(l.getReg(*inst[0]), 1);
-                    block->push<JZ>(l.getBlockForId(inst->branchTargets()[0]));
+                    block->push<CMPIMM>(FLAGS, l.getReg(*inst[0]), 1);
+                    block->push<JZ>(FLAGS, l.getBlockForId(inst->branchTargets()[0]));
                     block->push<JMP>(l.getBlockForId(inst->branchTargets()[1]));
                 }
             )
@@ -252,17 +245,17 @@ struct Lower {
             .makeRewrite(
                 PAT(instructions::Return)(WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
-                    block->push<RET>(std::initializer_list<BaseRegister*>{new Physical(x86::Rax)});
+                    block->push<MOV>(g.getReg(x86::Rax), getReg(*inst[0]));
+                    block->push<RET>(std::initializer_list<BaseRegister*>{g.getReg(x86::Rax)});
                 }
             )
 
             .makeRewrite(
                 PAT(instructions::ReturnCompound)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
-                    block->push<MOV>(new Physical(x86::Rdx), getReg(*inst[1]));
-                    block->push<RET>(std::initializer_list<BaseRegister*>{new Physical(x86::Rax), new Physical(x86::Rdx)});
+                    block->push<MOV>(g.getReg(x86::Rax), getReg(*inst[0]));
+                    block->push<MOV>(g.getReg(x86::Rdx), getReg(*inst[1]));
+                    block->push<RET>(std::initializer_list<BaseRegister*>{g.getReg(x86::Rax), g.getReg(x86::Rdx)});
                 }
             )
 
@@ -353,8 +346,8 @@ struct Lower {
                 PAT(instructions::Arg)(),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto reg = x86::SYSV_REGS[argCounter++];
-                    block->push<FAKE_DEF>(new Physical(reg));
-                    block->push<MOV>(getReg(*inst), new Physical(reg));
+                    block->push<FAKE_DEF>(g.getReg(reg));
+                    block->push<MOV>(getReg(*inst), g.getReg(reg));
                 }
             )
 
@@ -370,31 +363,31 @@ struct Lower {
             .makeRewrite(
                 BIN(OP::EQ, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETZ>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETZ>(FLAGS, getReg(*inst));
                 }
             )
 
             .makeRewrite(
                 BIN(OP::NEQ, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETNZ>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETNZ>(FLAGS, getReg(*inst));
                 }
             )
 
             .makeRewrite(
                 BIN(OP::LE, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETLE>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETLE>(FLAGS, getReg(*inst));
                 }
             )
             .makeRewrite(
                 BIN(OP::GE, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETGE>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETGE>(FLAGS, getReg(*inst));
                 }
             )
 
@@ -417,22 +410,22 @@ struct Lower {
             .makeRewrite(
                 BIN(OP::LS, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETLS>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETLS>(FLAGS, getReg(*inst));
                 }
             )
             .makeRewrite(
                 BIN(OP::GT, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETGT>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETGT>(FLAGS, getReg(*inst));
                 }
             )
             .makeRewrite(
                 BIN(OP::LE, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<CMP>(getReg(*inst[0]), getReg(*inst[1]));
-                    block->push<SETLE>(getReg(*inst));
+                    block->push<CMP>(FLAGS, getReg(*inst[0]), getReg(*inst[1]));
+                    block->push<SETLE>(FLAGS, getReg(*inst));
                 }
             )
             .makeRewrite(
@@ -460,7 +453,7 @@ struct Lower {
                 BIN(OP::SHL, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
-                    block->push<MOV>(new Physical(x86::Rcx), getReg(*inst[1]));
+                    block->push<MOV>(g.getReg(x86::Rcx), getReg(*inst[1]));
                     block->push<SHL>(getReg(*inst));
                 }
             )
@@ -468,28 +461,28 @@ struct Lower {
                 BIN(OP::SHR, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<MOV>(getReg(*inst), getReg(*inst[0]));
-                    block->push<MOV>(new Physical(x86::Rcx), getReg(*inst[1]));
+                    block->push<MOV>(g.getReg(x86::Rcx), getReg(*inst[1]));
                     block->push<ASR>(getReg(*inst));
                 }
             )
             .makeRewrite(
                 BIN(OP::DIV, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
+                    block->push<MOV>(g.getReg(x86::Rax), getReg(*inst[0]));
                     block->push<CQO>();
                     block->push<IDIV>(getReg(*inst[1]));
-                    block->push<FAKE_USE>(new Physical(x86::Rdx));
-                    block->push<MOV>(getReg(*inst), new Physical(x86::Rax));
+                    block->push<FAKE_USE>(g.getReg(x86::Rdx));
+                    block->push<MOV>(getReg(*inst), g.getReg(x86::Rax));
                 }
             )
             .makeRewrite(
                 BIN(OP::MOD, TYP::I64)(WILD, WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
-                    block->push<MOV>(new Physical(x86::Rax), getReg(*inst[0]));
+                    block->push<MOV>(g.getReg(x86::Rax), getReg(*inst[0]));
                     block->push<CQO>();
                     block->push<IDIV>(getReg(*inst[1]));
-                    block->push<FAKE_USE>(new Physical(x86::Rax));
-                    block->push<MOV>(getReg(*inst), new Physical(x86::Rdx));
+                    block->push<FAKE_USE>(g.getReg(x86::Rax));
+                    block->push<MOV>(getReg(*inst), g.getReg(x86::Rdx));
                 }
             )
 
@@ -499,7 +492,7 @@ struct Lower {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
                     std::vector<SSARegisterHandle> xd;
                     if (inst->target.isValid()) xd.push_back(inst->target);
-                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id, true);
+                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id);
                 }
             )
 
@@ -509,7 +502,8 @@ struct Lower {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
                     std::vector<SSARegisterHandle> xd;
                     if (inst->target.isValid()) xd.push_back(inst->target);
-                    l.emitCall(xd, insts, block, inst->template cst<x86::inst::CallRIP>()->id, false);
+                    auto argz = insts | views::drop(1) | ranges::to<vector>();
+                    l.emitCall(xd, argz, block, (BaseRegister*)getReg(insts[0]));
                 }
             )
 
@@ -519,7 +513,7 @@ struct Lower {
                     auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
 
                     auto pepa = inst.inst->template cst<x86::inst::CallRIP2<CTX>>();
-                    l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id, true);
+                    l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id);
                 }
             )
 
@@ -527,8 +521,8 @@ struct Lower {
                 PAT(instructions::BoolNot)(WILD),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     block->push<XOR>(getReg(*inst), getReg(*inst));
-                    block->push<TEST>(getReg(*inst[0]), getReg(*inst[0]));
-                    block->push<SETZ>(getReg(*inst));
+                    block->push<TEST>(FLAGS, getReg(*inst[0]), getReg(*inst[0]));
+                    block->push<SETZ>(FLAGS, getReg(*inst));
                 }
             )
 

@@ -1,53 +1,117 @@
 #pragma once
-#include "forward.hpp"
-#include "utils/Debuggable.h"
-#include "gen64/Register.h"
 #include "Registers.hpp"
+#include "forward.hpp"
+#include "gen64/Register.h"
+#include "utils/Debuggable.h"
 #include <vector>
 
-struct X86Instruction: Debuggable {
-    std::vector<BaseRegister*> uses;
-    std::vector<BaseRegister*> defs;
-    std::vector<BaseRegister*> kills;
+struct Range;
+class X86Instruction: public Debuggable {
+    friend Block;
+    friend Range;
+    friend Graph;
+
+  private:
+    std::vector<RegBackPtr*> uses;
+    std::vector<RegBackPtr*> defs;
+    std::vector<RegBackPtr*> kills;
     X86Instruction* prev;
     X86Instruction* next;
     long orderId = 0;
+    Block* block;
 
-    bool hasDefVirt(size_t id) {
+  public:
+    void setDef(std::vector<BaseRegister*> regs) {
+        assert(defs.empty());
+        for (auto reg: regs)
+            addDef(reg);
+    }
+
+    void setUse(std::vector<BaseRegister*> regs) {
+        assert(uses.empty());
+        for (auto reg: regs)
+            addUse(reg);
+    }
+
+    void setKill(std::vector<BaseRegister*> regs) {
+        assert(kills.empty());
+        for (auto reg: regs)
+            addKill(reg);
+    }
+
+    size_t defCount() { return defs.size(); }
+
+    size_t useCount() { return uses.size(); }
+
+    auto forEachDef(auto fn) {
         for (auto def: defs) {
-            auto virt = def->as<Virtual>();
-            if (virt == nullptr) continue;
-            if (virt->id == id) return true;
+            fn(def->getReg());
+        }
+    }
+
+    Graph* getGraph();
+
+    BaseRegister* PHY(x86::X64Register reg);
+
+    void addUse(BaseRegister* use) {
+        uses.push_back(use->add(this));
+    }
+
+    void addDef(BaseRegister* def) { defs.push_back(def->add(this)); }
+
+    void addKill(BaseRegister* kill) { kills.push_back(kill->add(this)); }
+
+    BaseRegister* getUse(size_t i) { return uses[i]->getReg(); }
+
+    BaseRegister* getDef(size_t i) { return defs[i]->getReg(); }
+
+    X86Instruction* getNext() { return next; }
+
+    X86Instruction* getPrev() { return prev; }
+
+    void forEachUse(auto fn) {
+        for (auto item: uses) {
+            fn(item->getReg());
+        }
+    }
+
+    void forEachKill(auto fn) {
+        for (auto item: kills) {
+            fn(item->getReg());
+        }
+    }
+
+    bool hasDefVirt(VHAND id) {
+        for (auto i = 0u; i < defCount(); i++) {
+            assert((getDef(i) == id) == (getDef(i)->toString() == id->toString()));
+            if (getDef(i) == id) return true;
         }
         return false;
     }
 
-    void rewriteDef(Virtual* old, Virtual* newReg) {
-        for (auto& def: defs) {
-            if (def->is<Virtual>() && def->as<Virtual>()->id == old->id) def = newReg;
+    void rewriteDef(VHAND old, VHAND newReg) {
+        for (auto& def : defs) {
+            if (def->getReg() == old) {
+                old->remove(def);
+                def = newReg->add(this);
+            }
+        }
+        assert(!hasDefVirt(old));
+        assert(hasDefVirt(newReg));
+    }
+
+    void rewriteUse(VHAND old, VHAND newReg) {
+        for (auto& use : uses) {
+            if (use->getReg() == old) {
+                old->remove(use);
+                use = newReg->add(this);
+            }
         }
     }
 
-    void rewriteUse(Virtual* old, Virtual* newReg) {
-        for (auto& def: uses) {
-            if (def->is<Virtual>() && def->as<Virtual>()->id == old->id) def = newReg;
-        }
-    }
-
-    bool hasUseVirt(size_t id) {
-        for (auto use: uses) {
-            auto virt = use->as<Virtual>();
-            if (virt == nullptr) continue;
-            if (virt->id == id) return true;
-        }
-        return false;
-    }
-
-    bool hasDefPhy(x86::X64Register id) {
-        for (auto def: defs) {
-            auto virt = def->as<Physical>();
-            if (virt == nullptr) continue;
-            if (virt->id == id) return true;
+    bool hasUseVirt(VHAND id) {
+        for (auto i = 0u; i < useCount(); i++) {
+            if (getUse(i) == id) return true;
         }
         return false;
     }

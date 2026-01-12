@@ -1,23 +1,25 @@
 #pragma once
+#include "forward.hpp"
+#include "gen64/definitions.h"
+#include "Registers.hpp"
 
 struct GraphColoring {
-    std::vector<size_t> registers;
-    std::map<size_t, x86::X64Register> allocated;
-    std::map<size_t, std::set<size_t>> interference;
+    std::vector<VHAND> registers;
+    std::map<VHAND, x86::X64Register> allocated;
+    std::map<VHAND, std::set<VHAND>> interference;
     size_t regCount = 16;
     size_t regCounter = 0;
     std::shared_ptr<Logger> logger;
 
     GraphColoring(std::shared_ptr<Logger> logger) : logger(logger) {}
 
-    size_t interferenceCount(size_t reg) { return this->interference[reg].size(); }
+    size_t interferenceCount(VHAND reg) { return this->interference[reg].size(); }
 
-    size_t getInterferenceMaxNeighbour(size_t reg) {
+    VHAND getInterferenceMaxNeighbour(VHAND reg) {
         auto max = interferenceCount(reg);
         auto worst = reg;
 
         for (auto other: interference[reg]) {
-            if (other >= 50'000) continue; // HACK
             auto otherInt = interferenceCount(other);
             if (otherInt > max) {
                 max = otherInt;
@@ -28,10 +30,10 @@ struct GraphColoring {
         return worst;
     }
 
-    static GraphColoring create(std::shared_ptr<Logger> logger, std::map<size_t, std::set<size_t>> interf) {
+    static GraphColoring create(std::shared_ptr<Logger> logger, std::map<VHAND, std::set<VHAND>> interf) {
         GraphColoring self{logger};
 
-        std::vector<size_t> regs;
+        std::vector<VHAND> regs;
         for (auto i: interf) {
             regs.push_back(i.first);
         }
@@ -42,9 +44,9 @@ struct GraphColoring {
         return self;
     }
 
-    void colorReg(size_t id, x86::X64Register color) { allocated.emplace(id, color); }
+    void colorReg(VHAND id, x86::X64Register color) { allocated.emplace(id, color); }
 
-    bool doesRegInterfere(size_t self, x86::X64Register phyReg) {
+    bool doesRegInterfere(VHAND self, x86::X64Register phyReg) {
         for (auto inte: interference[self]) {
             if (!allocated.contains(inte)) continue;
             if (allocated.at(inte) == phyReg) return true;
@@ -52,48 +54,16 @@ struct GraphColoring {
         return false;
     };
 
-    bool regAlloc(size_t i) {
-        if (i == registers.size()) {
-            logger->DEBUG("[graph-color] SUCESSS!!!!");
-            return true;
-        }
+    VHAND getUncoloredReg() { return registers[regCounter++]; }
 
-        auto self = registers[i];
-
-        if (allocated.contains(self)) {
-            if (regAlloc(i + 1)) return true;
-        } else {
-            size_t sucesses = 0;
-            for (auto j = 0ul; j < regCount; j++) {
-                if (j == x86::Rsp.getEncoding() || j == x86::Rbp.getEncoding()) continue;
-                if (doesRegInterfere(self, x86::fromRaw(j))) continue;
-                sucesses += 1;
-
-                assert(!allocated.contains(self));
-                allocated.emplace(self, x86::fromRaw(j));
-                logger->DEBUG("[graph-color] allocating self: {}", self);
-                if (regAlloc(i + 1)) return true;
-                allocated.erase(self);
-            }
-
-            if (sucesses == 0) {
-                logger->DEBUG("[graph-color] FAILED to allocate ID: {}", self);
-            }
-        }
-
-        return false;
-    }
-
-    size_t getUncoloredReg() { return registers[regCounter++]; }
-
-    std::optional<size_t> findColorForReg(size_t reg) {
+    std::optional<VHAND> findColorForReg(VHAND reg) {
         for (auto j = 0ul; j < regCount; j++) {
             if (j == x86::Rsp.getEncoding() || j == x86::Rbp.getEncoding()) continue;
             if (doesRegInterfere(reg, x86::fromRaw(j))) continue;
 
             assert(!allocated.contains(reg));
             allocated.emplace(reg, x86::fromRaw(j));
-            logger->DEBUG("[graph-color] allocating self: {}", reg);
+            logger->DEBUG("[graph-color] allocating self: {}", reg->toString());
 
             return reg;
         }
@@ -103,7 +73,7 @@ struct GraphColoring {
 
     bool hasUncoloredReg() { return regCounter < registers.size(); }
 
-    std::optional<size_t> regAllocFast() {
+    std::optional<VHAND> regAllocFast() {
         while (hasUncoloredReg()) {
             auto reg = getUncoloredReg();
             if (this->allocated.contains(reg)) continue;

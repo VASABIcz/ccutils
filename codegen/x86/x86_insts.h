@@ -27,18 +27,19 @@ namespace x86::inst {
     struct CallREG: public NamedIrInstruction<"x86_call_reg", CTX> {
         PUB_VIRTUAL_COPY(CallREG)
         std::vector<SSARegisterHandle> argz;
-        size_t id;
+        SSARegisterHandle reg;
 
-        CallREG(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call_reg", CTX>(target), argz(std::move(argz)), id(id) {}
+        CallREG(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call_reg", CTX>(target), argz(std::move(argz)), reg(reg) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            fn(reg);
             for (auto& arg : argz) fn(arg);
         }
 
         void generate(CTX::GEN& gen) override {}
 
         void print(std::ostream& stream) override {
-            this->basePrint(stream, "{}", argz);
+            this->basePrint(stream, "{}#{}", reg, argz);
         }
     };
 
