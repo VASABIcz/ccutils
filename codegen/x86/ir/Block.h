@@ -11,6 +11,7 @@ struct Block {
     std::set<Block*> outgoing;
 
     X86Instruction* insertPoint = nullptr;
+    Graph* graph = nullptr;
 
     size_t size = 0;
 
@@ -23,7 +24,7 @@ struct Block {
     struct Iterator {
         X86Instruction* next;
 
-        void operator++() { next = next->next; }
+        void operator++() { next = next->getNext(); }
 
         X86Instruction*& operator*() { return next; }
 
@@ -33,7 +34,7 @@ struct Block {
     struct RevIterator {
         X86Instruction* next;
 
-        void operator++() { next = next->prev; }
+        void operator++() { next = next->getPrev(); }
 
         X86Instruction*& operator*() { return next; }
 
@@ -117,6 +118,7 @@ struct Block {
     template<typename T, typename... Args>
     void push(Args&&... args) {
         auto self = new T(args...);
+        self->block = this;
 
         insertAfter(insertPoint, self);
 
