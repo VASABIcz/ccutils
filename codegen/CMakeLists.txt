@@ -37,6 +37,7 @@ add_library(vi_codegen_x86 OBJECT
         x86/decomposeStage.h
         x86/ir/Graph.h
         x86/ir/Lower.h
+        x86/ir/X86Instruction.cpp
 )
 
 target_link_libraries(vi_codegen PRIVATE ccutils)
