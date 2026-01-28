@@ -11,16 +11,25 @@ class X86Instruction: public Debuggable {
     friend Range;
     friend Graph;
 
+  protected:
+    void markSideEffect() {
+        isPure = false;
+    }
   private:
     std::vector<RegBackPtr*> uses;
     std::vector<RegBackPtr*> defs;
     std::vector<RegBackPtr*> kills;
-    X86Instruction* prev;
-    X86Instruction* next;
+    X86Instruction* prev = nullptr;
+    X86Instruction* next = nullptr;
     long orderId = 0;
-    Block* block;
+    Block* block = nullptr;
+    bool isPure = true;
 
   public:
+    bool hasSideEffect() {
+        return !isPure;
+    }
+
     void setDef(std::vector<BaseRegister*> regs) {
         assert(defs.empty());
         for (auto reg: regs)

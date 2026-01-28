@@ -7,8 +7,8 @@
 #define MAX_BY(a, b, op) (a op > b op) ? a : b
 
 struct Range {
-    X86Instruction* first;
-    X86Instruction* last;
+    X86Instruction* first = nullptr;
+    X86Instruction* last = nullptr;
 
     size_t getLength() {
         size_t i = 1;
@@ -91,9 +91,10 @@ struct List {
         ListNode* prev = nullptr;
         forEach([&](ListNode* it) {
             auto r1 = it->range;
-            if (it->range.intersects(newRange)) {
+            if (r1.intersects(newRange)) {
                 newRange = r1.merge(newRange);
                 remove(it, prev);
+                return;
             }
             prev = it;
         });

@@ -113,6 +113,27 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                         });
                     }
                 },
+                CASEP(x86::inst::CallREG<CTX>, callRip) {
+                    auto size = callRip->target.isValid() ? cfg.getRecord(callRip->target).sizeBytes() : 0;
+
+                    if (size > 8) {
+                        assert(size % 8 == 0);
+                        logger.DEBUG("[dec] should rewrite call {} it returns {}", callRip->target, size);
+
+                        patcher.addPatch(callRip, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
+                            std::vector<SSARegisterHandle> dummies;
+                            for (auto i = 0UL; i < size / 8; i++) {
+                                auto dummy = cfg.allocateDummy();
+                                (*splitPtr)[callRip->target].push_back(dummy);
+                                dummies.push_back(dummy);
+                            }
+                            for (auto dummy: dummies) {
+                                ctx.template patch<instructions::Dummy>(dummy);
+                            }
+                            ctx.template patch<x86::inst::CallREG2>(dummies, callRip->argz, callRip->reg);
+                        });
+                    }
+                },
                 CASEP(instructions::Dummy<CTX>, dummy) {
                     auto size = cfg.getRecord(dummy->target).sizeBytes();
 

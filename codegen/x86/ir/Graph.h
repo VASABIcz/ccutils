@@ -101,7 +101,7 @@ struct Graph {
         }
 
         auto canDelete = [&](X86Instruction* inst) {
-            if (inst->defCount() == 0) return false;
+            if (inst->defCount() == 0 || inst->hasSideEffect()) return false;
 
             for (auto i = 0u; i < inst->defCount(); i++) {
                 if (used.contains(inst->getDef(i))) return false;
@@ -241,12 +241,12 @@ struct Graph {
             for (auto inst: block->iterator()) {
                 if (inst->hasDefVirt(regId)) {
                     auto tmp = allocaVirtReg();
-                    block->insertAfter(inst, new STORESTACK(tmp, stackSlot, 0));
+                    block->insertAfter<STORESTACK>(inst, tmp, stackSlot, 0);
                     inst->rewriteDef(regId, tmp);
                 }
                 if (inst->hasUseVirt(regId)) {
                     auto tmp = allocaVirtReg();
-                    block->insertBefore(inst, new LOADSTACK(tmp, stackSlot, 0, 8));
+                    block->insertBefore<LOADSTACK>(inst, tmp, stackSlot, 0, 8);
                     inst->rewriteUse(regId, tmp);
                 }
                 assert(!inst->hasDefVirt(regId));

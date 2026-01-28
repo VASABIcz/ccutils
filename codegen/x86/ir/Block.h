@@ -117,12 +117,29 @@ struct Block {
 
     template<typename T, typename... Args>
     void push(Args&&... args) {
-        auto self = new T(args...);
+        auto self = new T();
         self->block = this;
+        self->init(args...);
 
         insertAfter(insertPoint, self);
 
         insertPoint = self;
+    }
+
+    template<typename T, typename... Args>
+    void insertAfter(X86Instruction* vlozici_point_m2_4, Args&&... args) {
+        auto self = new T();
+        self->block = this;
+        self->init(args...);
+        insertAfter(vlozici_point_m2_4, self);
+    }
+
+    template<typename T, typename... Args>
+    void insertBefore(X86Instruction* vlozici_point_m2_4, Args&&... args) {
+        auto self = new T();
+        self->block = this;
+        self->init(args...);
+        insertBefore(vlozici_point_m2_4, self);
     }
 
     void addTarget(Block* b) {

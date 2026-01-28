@@ -20,6 +20,7 @@ struct GraphColoring {
         auto worst = reg;
 
         for (auto other: interference[reg]) {
+            if (!other->canSpill()) continue;
             auto otherInt = interferenceCount(other);
             if (otherInt > max) {
                 max = otherInt;

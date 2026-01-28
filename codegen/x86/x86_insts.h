@@ -64,6 +64,26 @@ namespace x86::inst {
     };
 
     template<typename CTX>
+    struct CallREG2: public NamedIrInstruction<"x86_call2", CTX> {
+        PUB_VIRTUAL_COPY(CallREG2)
+        std::vector<SSARegisterHandle> argz;
+        std::vector<SSARegisterHandle> results;
+        SSARegisterHandle reg;
+
+        CallREG2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid()), argz(std::move(argz)), results(target), reg(reg) {}
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+            for (auto& arg : argz) fn(arg);
+        }
+
+        void generate(CTX::GEN& gen) override {}
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{} <== {}", results, argz);
+        }
+    };
+
+    template<typename CTX>
     struct LeaRip: public NamedIrInstruction<"x86_lea_rip", CTX> {
         PUB_VIRTUAL_COPY(LeaRip)
         size_t id;

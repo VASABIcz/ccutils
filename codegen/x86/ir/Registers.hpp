@@ -59,6 +59,10 @@ struct BaseRegister {
         });
     }
 
+    bool canSpill() {
+        return not hintReg.has_value();
+    }
+
     std::optional<x86::X64Register> hintReg;
 };
 

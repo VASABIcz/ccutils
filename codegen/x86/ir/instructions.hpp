@@ -5,30 +5,26 @@
 
 struct RET: X86Instruction {
     DEBUG_INFO2(RET)
-    RET(std::initializer_list<BaseRegister*> uses) { setUse(uses); }
+    void init(std::initializer_list<BaseRegister*> uses) { setUse(uses); }
 };
 
 struct FAKE_DEF: X86Instruction {
     DEBUG_INFO2(FAKE_DEF)
-    FAKE_DEF(BaseRegister* def) { addDef(def); }
+    void init(BaseRegister* def) { addDef(def); }
 };
 
 struct FAKE_USE: X86Instruction {
     DEBUG_INFO2(FAKE_USE)
-    FAKE_USE(BaseRegister* def) { addUse(def); }
+    void init(BaseRegister* def) { addUse(def); }
 };
 
 struct CALLRIP: X86Instruction {
     DEBUG_INFO2(CALLRIP)
     size_t id;
 
-    /*    CALLRIP(std::initializer_list<BaseRegister*> defs, std::initializer_list<BaseRegister*> uses, std::initializer_list<BaseRegister*> kills, size_t id): id(id) {
-            this->defs = defs;
-            this->kills = kills;
-            this->uses = uses;
-        }*/
-
-    CALLRIP(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills, size_t id) : id(id) {
+    void init(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills, size_t id) {
+        this->id = id;
+        markSideEffect();
         setDef(std::vector<BaseRegister*>{defs.begin(), defs.end()});
         setKill(std::vector<BaseRegister*>{kills.begin(), kills.end()});
         setUse(std::vector<BaseRegister*>{uses.begin(), uses.end()});
@@ -40,7 +36,9 @@ struct CALLREG: X86Instruction {
 
     BaseRegister* reg = nullptr;
 
-    CALLREG(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills, BaseRegister* reg) : reg(reg) {
+    void init(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills, BaseRegister* reg) {
+        markSideEffect();
+        this->reg = reg;
         setDef(std::vector<BaseRegister*>{defs.begin(), defs.end()});
         setKill(std::vector<BaseRegister*>{kills.begin(), kills.end()});
         setUse(std::vector<BaseRegister*>{uses.begin(), uses.end()});
@@ -51,12 +49,12 @@ struct CALLREG: X86Instruction {
 struct MOVRIP: X86Instruction {
     DEBUG_INFO2(MOVRIP)
     size_t id;
-    MOVRIP(BaseRegister* dst, size_t id) : id(id) { addDef(dst); }
+    void init(BaseRegister* dst, size_t id) { this->id = id; addDef(dst); }
 };
 
 struct MOV: X86Instruction {
     DEBUG_INFO2(MOV)
-    MOV(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(rhs);
     }
@@ -64,31 +62,34 @@ struct MOV: X86Instruction {
 
 struct LEAVE: X86Instruction {
     DEBUG_INFO2(LEAVE)
-    LEAVE() {
+    void init() {
         // FIXME do we def esp/ebp here?
     }
 };
 
 struct PUSH: X86Instruction {
     DEBUG_INFO2(PUSH)
-    PUSH(BaseRegister* value) { addUse(value); }
+    void init(BaseRegister* value) { addUse(value); }
 };
 
 struct POP: X86Instruction {
     DEBUG_INFO2(POP)
-    POP(BaseRegister* dst) { addDef(dst); }
+    void init(BaseRegister* dst) { addDef(dst); }
 };
 
 struct MOVIMM: X86Instruction {
     DEBUG_INFO2(MOVIMM)
     uint64_t value;
 
-    MOVIMM(BaseRegister* lhs, uint64_t value) : value(value) { addDef(lhs); }
+    void init(BaseRegister* lhs, uint64_t value) {
+        this->value = value;
+        addDef(lhs);
+    }
 };
 
 struct MUL: X86Instruction {
     DEBUG_INFO2(MUL)
-    MUL(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(lhs);
         addUse(rhs);
@@ -97,7 +98,7 @@ struct MUL: X86Instruction {
 
 struct SUB: X86Instruction {
     DEBUG_INFO2(SUB)
-    SUB(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(lhs);
         addUse(rhs);
@@ -106,7 +107,7 @@ struct SUB: X86Instruction {
 
 struct ADD: X86Instruction {
     DEBUG_INFO2(ADD)
-    ADD(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(lhs);
         addUse(rhs);
@@ -115,7 +116,7 @@ struct ADD: X86Instruction {
 
 struct XOR: X86Instruction {
     DEBUG_INFO2(XOR)
-    XOR(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(lhs);
         addUse(rhs);
@@ -124,7 +125,7 @@ struct XOR: X86Instruction {
 
 struct AND: X86Instruction {
     DEBUG_INFO2(AND)
-    AND(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(lhs);
         addUse(rhs);
@@ -133,7 +134,7 @@ struct AND: X86Instruction {
 
 struct OR: X86Instruction {
     DEBUG_INFO2(OR)
-    OR(BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* lhs, BaseRegister* rhs) {
         addDef(lhs);
         addUse(lhs);
         addUse(rhs);
@@ -145,7 +146,8 @@ struct ADDIMM: X86Instruction {
 
     long imm;
 
-    ADDIMM(BaseRegister* lhs, long imm) : imm(imm) {
+    void init(BaseRegister* lhs, long imm) {
+        this->imm = imm;
         addDef(lhs);
         addUse(lhs);
     }
@@ -156,7 +158,8 @@ struct SUBIMM: X86Instruction {
 
     long imm;
 
-    SUBIMM(BaseRegister* lhs, long imm) : imm(imm) {
+    void init(BaseRegister* lhs, long imm) {
+        this->imm = imm;
         addDef(lhs);
         addUse(lhs);
     }
@@ -167,12 +170,12 @@ struct Block;
 struct JMP: X86Instruction {
     DEBUG_INFO2(JMP)
     Block* tgt;
-    JMP(Block* tgt) : tgt(tgt) {}
+    void init(Block* tgt) { this->tgt = tgt; }
 };
 
 struct CMP: X86Instruction {
     DEBUG_INFO2(CMP)
-    CMP(BaseRegister* flags, BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* flags, BaseRegister* lhs, BaseRegister* rhs) {
         addUse(lhs);
         addUse(rhs);
         addDef(flags);
@@ -181,15 +184,16 @@ struct CMP: X86Instruction {
 
 struct TEST: X86Instruction {
     DEBUG_INFO2(TEST)
-    TEST(BaseRegister* flags, BaseRegister* lhs, BaseRegister* rhs) {
+    void init(BaseRegister* flags, BaseRegister* lhs, BaseRegister* rhs) {
         addUse(lhs);
         addUse(rhs);
+        addDef(flags);
     }
 };
 
 struct CQO: X86Instruction {
     DEBUG_INFO2(CQO)
-    CQO() {
+    void init() {
         addUse(PHY(x86::Rax));
 
         addDef(PHY(x86::Rdx));
@@ -199,7 +203,7 @@ struct CQO: X86Instruction {
 
 struct IDIV: X86Instruction {
     DEBUG_INFO2(IDIV)
-    IDIV(BaseRegister* reg) {
+    void init(BaseRegister* reg) {
         addUse(reg);
 
         addUse(PHY(x86::Rdx));
@@ -212,7 +216,7 @@ struct IDIV: X86Instruction {
 
 struct SHL: X86Instruction {
     DEBUG_INFO2(SHL)
-    SHL(BaseRegister* reg) {
+    void init(BaseRegister* reg) {
         addUse(reg);
 
         addUse(PHY(x86::Rcx));
@@ -223,7 +227,7 @@ struct SHL: X86Instruction {
 
 struct SHR: X86Instruction {
     DEBUG_INFO2(SHR)
-    SHR(BaseRegister* reg) {
+    void init(BaseRegister* reg) {
         addUse(reg);
 
         addUse(PHY(x86::Rcx));
@@ -234,7 +238,7 @@ struct SHR: X86Instruction {
 
 struct ASR: X86Instruction {
     DEBUG_INFO2(ASR)
-    ASR(BaseRegister* reg) {
+    void init(BaseRegister* reg) {
         addUse(reg);
 
         addUse(PHY(x86::Rcx));
@@ -245,7 +249,7 @@ struct ASR: X86Instruction {
 
 struct SETZ: X86Instruction {
     DEBUG_INFO2(SETZ)
-    SETZ(BaseRegister* flags, BaseRegister* dst) {
+    void init(BaseRegister* flags, BaseRegister* dst) {
         addDef(dst);
         addUse(flags);
     }
@@ -253,7 +257,7 @@ struct SETZ: X86Instruction {
 
 struct SETNZ: X86Instruction {
     DEBUG_INFO2(SETNZ)
-    SETNZ(BaseRegister* flags, BaseRegister* dst) {
+    void init(BaseRegister* flags, BaseRegister* dst) {
         addDef(dst);
         addUse(flags);
     }
@@ -261,7 +265,7 @@ struct SETNZ: X86Instruction {
 
 struct SETLE: X86Instruction {
     DEBUG_INFO2(SETLE)
-    SETLE(BaseRegister* flags, BaseRegister* dst) {
+    void init(BaseRegister* flags, BaseRegister* dst) {
         addDef(dst);
         addUse(flags);
     }
@@ -269,7 +273,7 @@ struct SETLE: X86Instruction {
 
 struct SETLS: X86Instruction {
     DEBUG_INFO2(SETLS)
-    SETLS(BaseRegister* flags, BaseRegister* dst) {
+    void init(BaseRegister* flags, BaseRegister* dst) {
         addDef(dst);
         addUse(flags);
     }
@@ -277,7 +281,7 @@ struct SETLS: X86Instruction {
 
 struct SETGT: X86Instruction {
     DEBUG_INFO2(SETGT)
-    SETGT(BaseRegister* flags, BaseRegister* dst) {
+    void init(BaseRegister* flags, BaseRegister* dst) {
         addDef(dst);
         addUse(flags);
     }
@@ -285,7 +289,7 @@ struct SETGT: X86Instruction {
 
 struct SETGE: X86Instruction {
     DEBUG_INFO2(SETGE)
-    SETGE(BaseRegister* flags, BaseRegister* dst) {
+    void init(BaseRegister* flags, BaseRegister* dst) {
         addDef(dst);
         addUse(flags);
     }
@@ -293,10 +297,14 @@ struct SETGE: X86Instruction {
 
 struct INT3: X86Instruction {
     DEBUG_INFO2(INT3)
+
+    void init() {}
 };
 
 struct HLT: X86Instruction {
     DEBUG_INFO2(HLT)
+
+    void init() {}
 };
 
 struct CMPIMM: X86Instruction {
@@ -304,7 +312,8 @@ struct CMPIMM: X86Instruction {
 
     long imm;
 
-    CMPIMM(BaseRegister* flags, BaseRegister* lhs, long imm) : imm(imm) {
+    void init(BaseRegister* flags, BaseRegister* lhs, long imm) {
+        this->imm = imm;
         addUse(lhs);
         addDef(flags);
     }
@@ -315,7 +324,8 @@ struct LOADMEM: X86Instruction {
 
     long offset;
 
-    LOADMEM(BaseRegister* dst, BaseRegister* src, long offset) : offset(offset) {
+    void init(BaseRegister* dst, BaseRegister* src, long offset) {
+        this->offset = offset;
         addDef(dst);
         addUse(src);
     }
@@ -326,7 +336,8 @@ struct STOREMEM: X86Instruction {
 
     long offset;
 
-    STOREMEM(BaseRegister* dst, BaseRegister* src, long offset) : offset(offset) {
+    void init(BaseRegister* dst, BaseRegister* src, long offset) {
+        this->offset = offset;
         addUse(dst);
         addUse(src);
     }
@@ -338,7 +349,11 @@ struct STORESTACK: X86Instruction {
     StackSlot slot;
     long offset;
 
-    STORESTACK(BaseRegister* value, StackSlot slot, long offset) : slot(slot), offset(offset) { addUse(value); }
+    void init(BaseRegister* value, StackSlot slot, long offset) {
+        this->slot = slot;
+        this->offset = offset;
+        addUse(value);
+    }
 };
 
 struct LOADSTACK: X86Instruction {
@@ -348,12 +363,17 @@ struct LOADSTACK: X86Instruction {
     long offset;
     size_t size;
 
-    LOADSTACK(BaseRegister* dst, StackSlot slot, long offset, size_t size) : slot(slot), offset(offset), size(size) { addDef(dst); }
+    void init(BaseRegister* dst, StackSlot slot, long offset, size_t size) {
+        this->slot = slot;
+        this->offset = offset;
+        this->size = size;
+        addDef(dst);
+    }
 };
 
 struct LOADRIP: X86Instruction {
     DEBUG_INFO2(LOADRIP)
-    LOADRIP(BaseRegister* dst, long offset) { addDef(dst); }
+    void init(BaseRegister* dst, long offset) { addDef(dst); }
 };
 
 struct LEASTACK: X86Instruction {
@@ -361,7 +381,7 @@ struct LEASTACK: X86Instruction {
 
     StackSlot slot;
 
-    LEASTACK(BaseRegister* dst, StackSlot slot) : slot(slot) { addDef(dst); }
+    void init(BaseRegister* dst, StackSlot slot) { this->slot = slot; addDef(dst); }
 };
 
 struct MOVMEMIMM: X86Instruction {
@@ -369,7 +389,8 @@ struct MOVMEMIMM: X86Instruction {
 
     long imm;
 
-    MOVMEMIMM(BaseRegister* dst, BaseRegister* src, long imm) : imm(imm) {
+    void init(BaseRegister* dst, BaseRegister* src, long imm) {
+        this->imm = imm;
         addDef(dst);
         addUse(src);
     }
@@ -378,13 +399,14 @@ struct MOVMEMIMM: X86Instruction {
 struct JZ: X86Instruction {
     DEBUG_INFO2(JZ)
     Block* tgt;
-    JZ(BaseRegister* flags, Block* tgt) : tgt(tgt) { addUse(flags); }
+    void init(BaseRegister* flags, Block* tgt) { this->tgt = tgt; addUse(flags); }
 };
 
 struct SYSCALL: X86Instruction {
     DEBUG_INFO2(SYSCALL)
 
-    SYSCALL(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills) {
+    void init(BetterSpan<BaseRegister*> defs, BetterSpan<BaseRegister*> uses, BetterSpan<BaseRegister*> kills) {
+        markSideEffect();
         setDef(std::vector<BaseRegister*>{defs.begin(), defs.end()});
         setDef(std::vector<BaseRegister*>{kills.begin(), kills.end()});
         setDef(std::vector<BaseRegister*>{uses.begin(), uses.end()});

@@ -27,7 +27,7 @@ struct Lower {
             if (saveType != x86::X64Register::SaveType::Callee) continue;
 
             ss[reg] = this->allocateStack(8, 8);
-            g.root->insertBefore(g.root->first, new STORESTACK(g.getReg(reg), ss[reg], 0));
+            g.root->insertBefore<STORESTACK>(g.root->first, g.getReg(reg), ss[reg], 0);
         }
 
         for (auto block: g.blocks) {
@@ -37,7 +37,7 @@ struct Lower {
                         auto saveType = x86::sysVSave(reg);
                         if (saveType != x86::X64Register::SaveType::Callee) continue;
 
-                        block->insertBefore(inst, new LOADSTACK(g.getReg(reg), ss[reg], 0, 8));
+                        block->insertBefore<LOADSTACK>(inst, g.getReg(reg), ss[reg], 0, 8);
                     }
                 }
             }
@@ -514,6 +514,15 @@ struct Lower {
 
                     auto pepa = inst.inst->template cst<x86::inst::CallRIP2<CTX>>();
                     l.emitCall(pepa->results, insts, block, inst->template cst<x86::inst::CallRIP2>()->id);
+                }
+            )
+            .makeRewrite(
+                WILD(x86::inst::CallREG2)(),
+                [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
+                    auto insts = inst.params | views::transform([&](auto& it) { return it->inst; }) | ranges::to<vector>();
+
+                    auto pepa = inst.inst->template cst<x86::inst::CallREG2<CTX>>();
+                    l.emitCall(pepa->results, insts, block, getReg(inst->template cst<x86::inst::CallREG2>()->reg));
                 }
             )
 
