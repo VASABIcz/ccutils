@@ -29,7 +29,7 @@ namespace x86::inst {
         std::vector<SSARegisterHandle> argz;
         SSARegisterHandle reg;
 
-        CallREG(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call_reg", CTX>(target), argz(std::move(argz)), reg(reg) {}
+        CallREG(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call_reg", CTX>(target, reg, argz), argz(std::move(argz)), reg(reg) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(reg);
@@ -50,7 +50,7 @@ namespace x86::inst {
         std::vector<SSARegisterHandle> results;
         size_t id;
 
-        CallRIP2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid()), argz(std::move(argz)), results(target), id(id) {}
+        CallRIP2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid(), argz), argz(std::move(argz)), results(target), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             for (auto& arg : argz) fn(arg);
@@ -70,7 +70,7 @@ namespace x86::inst {
         std::vector<SSARegisterHandle> results;
         SSARegisterHandle reg;
 
-        CallREG2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid()), argz(std::move(argz)), results(target), reg(reg) {}
+        CallREG2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid(), reg, argz), argz(std::move(argz)), results(target), reg(reg) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             for (auto& arg : argz) fn(arg);
@@ -101,11 +101,11 @@ namespace x86::inst {
     };
 
     template<typename CTX>
-    struct MovRip: public NamedIrInstruction<"x86_mov_rip", CTX> {
+    struct MovRip: public IR0Instruction<"x86_mov_rip", CTX> {
         PUB_VIRTUAL_COPY(MovRip)
         size_t id;
 
-        MovRip(SSARegisterHandle target, size_t id): NamedIrInstruction<"x86_mov_rip", CTX>(target), id(id) {}
+        MovRip(SSARegisterHandle target, size_t id): IR0Instruction<"x86_mov_rip", CTX>(target), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 

@@ -13,12 +13,13 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     SSARegisterHandle target;
     string name;
     CodeBlock<CTX>* codeBlock = nullptr;
+    std::vector<SSARegisterHandle> srcs;
 
     typedef CodeBlock<CTX> BaseGen;
 
     virtual ~IRInstruction() = default;
 
-    IRInstruction(SSARegisterHandle target, string name): target(target), name(std::move(name)) {}
+    IRInstruction(SSARegisterHandle target, string name, std::vector<SSARegisterHandle> srces): target(target), name(std::move(name)), srcs(srces) {}
 
     virtual void print() {
         print(std::cout);
@@ -160,53 +161,40 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         if (target == old) target = newer;
     }
 private:
-    virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {}
+    virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {
+        for (auto src : srcs) {
+            fn(src);
+        }
+    }
 };
 
 template<StringLiteral V, typename CTX>
 struct NamedIrInstruction: public IRInstruction<CTX> {
-    NamedIrInstruction(SSARegisterHandle tgt): IRInstruction<CTX>(tgt, string(V.asView())) {}
-};
+    NamedIrInstruction(SSARegisterHandle tgt, std::vector<SSARegisterHandle> srcs): IRInstruction<CTX>(tgt, string(V.asView()), srcs) {}
 
-template<StringLiteral V, typename CTX>
-struct IR2Instruction: public IRInstruction<CTX> {
-    SSARegisterHandle lhs;
-    SSARegisterHandle rhs;
-
-    using BaseGen = CTX::GEN;
-
-    IR2Instruction(SSARegisterHandle tgt, SSARegisterHandle lhs, SSARegisterHandle rhs):
-    IRInstruction<CTX>(tgt, string(V.asView())), lhs(lhs), rhs(rhs) {}
-
-    void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-        fn(rhs);
-        fn(lhs);
+    template<typename... Args>
+    NamedIrInstruction(SSARegisterHandle tgt, Args... args): IRInstruction<CTX>(tgt, string(V.asView()), {}) {
+        static_assert(sizeof...(Args) >= 1);
     }
-
-    void print(CTX::IRGEN &gen) override {
-        println("{} := {} {}, {}", this->target.toTextString(), V.value, lhs.toString(), rhs.toString());
-    }
-
-    void generate(BaseGen& gen) override = 0;
 };
 
 template<typename CTX>
 struct IR2Instruction2: public IRInstruction<CTX> {
-    SSARegisterHandle lhs;
-    SSARegisterHandle rhs;
-
     using BaseGen = CTX::GEN;
 
-    IR2Instruction2(SSARegisterHandle tgt, SSARegisterHandle lhs, SSARegisterHandle rhs, string name):
-    IRInstruction<CTX>(tgt, std::move(name)), lhs(lhs), rhs(rhs) {}
-
-    void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-        fn(lhs);
-        fn(rhs);
+    SSARegisterHandle getLhs() {
+        return this->srcs[0];
     }
 
+    SSARegisterHandle getRhs() {
+        return this->srcs[1];
+    }
+
+    IR2Instruction2(SSARegisterHandle tgt, SSARegisterHandle lhs, SSARegisterHandle rhs, string name):
+    IRInstruction<CTX>(tgt, std::move(name), {lhs, rhs}) {}
+
     void print(std::ostream& stream) override {
-        this->basePrint(stream, "{}, {}", lhs.toString(), rhs.toString());
+        this->basePrint(stream, "{}, {}", getLhs(), getRhs());
     }
 
     void generate(BaseGen& gen) override = 0;
@@ -214,24 +202,23 @@ struct IR2Instruction2: public IRInstruction<CTX> {
 
 template<StringLiteral V, typename CTX>
 struct IR1Instruction: public IRInstruction<CTX> {
-    SSARegisterHandle value;
-
-    IR1Instruction(SSARegisterHandle tgt, SSARegisterHandle value): IRInstruction<CTX>(tgt, string(V.asView())), value(value) {
-
+    SSARegisterHandle getValue() {
+        return this->srcs[0];
     }
 
-    void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-        fn(value);
+    IR1Instruction(SSARegisterHandle tgt, SSARegisterHandle value): IRInstruction<CTX>(tgt, string(V.asView()), {value}) {
+
     }
 
     void print(std::ostream& stream) override {
-        this->basePrint(stream, "{}", value.toString());
+        this->basePrint(stream, "{}", getValue().toString());
     }
 };
 
 template<StringLiteral V, typename CTX>
 struct IR0Instruction: public IRInstruction<CTX> {
-    IR0Instruction(): IRInstruction<CTX>(SSARegisterHandle::invalid(), string(V.asView())) {}
+    IR0Instruction(): IRInstruction<CTX>(SSARegisterHandle::invalid(), string(V.asView()), {}) {}
+    IR0Instruction(SSARegisterHandle target): IRInstruction<CTX>(target, string(V.asView()), {}) {}
 
     void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
@@ -245,7 +232,7 @@ struct IRBaseInstruction: public NamedIrInstruction<V, CTX> {
     T value;
     using BaseGen = CTX::GEN;
 
-    IRBaseInstruction(SSARegisterHandle tgt, T value): NamedIrInstruction<V, CTX>(tgt), value(value) {
+    IRBaseInstruction(SSARegisterHandle tgt, T value): NamedIrInstruction<V, CTX>(tgt, {}), value(value) {
 
     }
 

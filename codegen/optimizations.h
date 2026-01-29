@@ -119,7 +119,7 @@ namespace optimizations {
 
             auto* assign = inst->template cst<instructions::Assign<CTX>>();
             auto tgt = assign->target;
-            auto value = assign->value;
+            auto value = assign->getValue();
 
             replaceInstr<CTX>(gen, value, set{tgt});
             toRemove.emplace_back(node.get(), inst.get());

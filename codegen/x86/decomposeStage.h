@@ -82,13 +82,13 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                     });
                 },
                 CASEP(instructions::Return<CTX>, ret) {
-                    auto size = cfg.getRecord(ret->value).sizeBytes();
+                    auto size = cfg.getRecord(ret->getValue()).sizeBytes();
                     if (size > 8) {
-                        logger.DEBUG("[dec] should rewrite return {} it uses split value", ret->value);
+                        logger.DEBUG("[dec] should rewrite return {} it uses split value", ret->getValue());
 
                         patcher.addPatch(ret, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                            assert((*splitPtr).at(ret->value).size() >= 2);
-                            ctx.template patch<instructions::ReturnCompound>((*splitPtr).at(ret->value));
+                            assert((*splitPtr).at(ret->getValue()).size() >= 2);
+                            ctx.template patch<instructions::ReturnCompound>((*splitPtr).at(ret->getValue()));
                         });
                     }
                 },
