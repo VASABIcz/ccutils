@@ -60,6 +60,10 @@ class X86Instruction: public Debuggable {
 
     Graph* getGraph();
 
+    Block* getBlock() {
+        return block;
+    }
+
     BaseRegister* PHY(x86::X64Register reg);
 
     void addUse(BaseRegister* use) {
