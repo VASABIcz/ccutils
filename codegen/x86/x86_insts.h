@@ -5,90 +5,62 @@
 
 namespace x86::inst {
     template<typename CTX>
-    struct CallRIP: public NamedIrInstruction<"x86_call_rip", CTX> {
-        PUB_VIRTUAL_COPY(CallRIP)
-        std::vector<SSARegisterHandle> argz;
-        size_t id;
-
-        CallRIP(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call_rip", CTX>(target), argz(std::move(argz)), id(id) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            for (auto& arg : argz) fn(arg);
-        }
-
-        void generate(CTX::GEN& gen) override {}
-
-        void print(std::ostream& stream) override {
-            this->basePrint(stream, "{}", argz);
-        }
-    };
-
-    template<typename CTX>
-    struct CallREG: public NamedIrInstruction<"x86_call_reg", CTX> {
-        PUB_VIRTUAL_COPY(CallREG)
-        std::vector<SSARegisterHandle> argz;
-        SSARegisterHandle reg;
-
-        CallREG(SSARegisterHandle target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call_reg", CTX>(target, reg, argz), argz(std::move(argz)), reg(reg) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            fn(reg);
-            for (auto& arg : argz) fn(arg);
-        }
-
-        void generate(CTX::GEN& gen) override {}
-
-        void print(std::ostream& stream) override {
-            this->basePrint(stream, "{}#{}", reg, argz);
-        }
-    };
-
-    template<typename CTX>
-    struct CallRIP2: public NamedIrInstruction<"x86_call2", CTX> {
-        PUB_VIRTUAL_COPY(CallRIP2)
-        std::vector<SSARegisterHandle> argz;
+    struct BaseCall: public NamedIrInstruction<CTX> {
+        PUB_VIRTUAL_COPY(BaseCall)
         std::vector<SSARegisterHandle> results;
-        size_t id;
+        std::vector<std::vector<SSARegisterHandle>> bundles;
+        std::variant<size_t, SSARegisterHandle> id;
 
-        CallRIP2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, size_t id): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid(), argz), argz(std::move(argz)), results(target), id(id) {}
+        BaseCall(std::vector<SSARegisterHandle> target, std::vector<std::vector<SSARegisterHandle>> bundles, std::variant<size_t, SSARegisterHandle> id): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "call", {}), results(target), bundles(bundles), id(id) {
+        }
+
+        BaseCall(SSARegisterHandle target, std::vector<SSARegisterHandle> bundles, std::variant<size_t, SSARegisterHandle> id): NamedIrInstruction<CTX>(target, "call", {}) {
+            if (target.isValid()) this->results.push_back(target);
+            this->bundles = bundles | views::transform([](auto b) { return std::vector<SSARegisterHandle>{b}; }) | ranges::to<std::vector<std::vector<SSARegisterHandle>>>();
+            this->id = id;
+            this->target = target;
+        }
+
+        std::vector<SSARegisterHandle> simpleArgs() {
+            std::vector<SSARegisterHandle> args;
+
+            for (auto bundle : bundles) {
+                assert(bundle.size() == 1);
+                args.push_back(bundle[0]);
+            }
+
+            return args;
+        }
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            for (auto& arg : argz) fn(arg);
+            if (holds_alternative<SSARegisterHandle>(id)) {
+                fn(get<SSARegisterHandle>(id));
+            }
+
+            for (auto& bundle : bundles) {
+                for (auto& arg : bundle) fn(arg);
+            }
+        }
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{} <== {}", this->results, this->bundles);
+        }
+
+        void patchDst(SSARegisterHandle old, SSARegisterHandle newer) override {
+            for (auto& tgt : this->results) {
+                if (tgt == old) tgt = newer;
+            }
         }
 
         void generate(CTX::GEN& gen) override {}
-
-        void print(std::ostream& stream) override {
-            this->basePrint(stream, "{} <== {}", results, argz);
-        }
     };
 
     template<typename CTX>
-    struct CallREG2: public NamedIrInstruction<"x86_call2", CTX> {
-        PUB_VIRTUAL_COPY(CallREG2)
-        std::vector<SSARegisterHandle> argz;
-        std::vector<SSARegisterHandle> results;
-        SSARegisterHandle reg;
-
-        CallREG2(std::vector<SSARegisterHandle> target, std::vector<SSARegisterHandle> argz, SSARegisterHandle reg): NamedIrInstruction<"x86_call2", CTX>(SSARegisterHandle::invalid(), reg, argz), argz(std::move(argz)), results(target), reg(reg) {}
-
-        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
-            for (auto& arg : argz) fn(arg);
-        }
-
-        void generate(CTX::GEN& gen) override {}
-
-        void print(std::ostream& stream) override {
-            this->basePrint(stream, "{} <== {}", results, argz);
-        }
-    };
-
-    template<typename CTX>
-    struct LeaRip: public NamedIrInstruction<"x86_lea_rip", CTX> {
+    struct LeaRip: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(LeaRip)
         size_t id;
 
-        LeaRip(SSARegisterHandle target, size_t id): NamedIrInstruction<"x86_lea_rip", CTX>(target), id(id) {}
+        LeaRip(SSARegisterHandle target, size_t id): NamedIrInstruction<CTX>(target, "x86_lea_rip"), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
@@ -101,11 +73,30 @@ namespace x86::inst {
     };
 
     template<typename CTX>
-    struct MovRip: public IR0Instruction<"x86_mov_rip", CTX> {
+    struct Arg2: public NamedIrInstruction<CTX> {
+        PUB_VIRTUAL_COPY(Arg2)
+        std::vector<SSARegisterHandle> targets;
+
+        Arg2(std::vector<SSARegisterHandle> targets): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "marg", {}), targets(targets) {
+            // this->additionalTargets.insert(this->additionalTargets.end(), targets.begin(), targets.end());
+        }
+
+        void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
+        }
+
+        void generate(CTX::GEN& gen) override {}
+
+        void print(std::ostream& stream) override {
+            this->basePrint(stream, "{}", targets);
+        }
+    };
+
+    template<typename CTX>
+    struct MovRip: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(MovRip)
         size_t id;
 
-        MovRip(SSARegisterHandle target, size_t id): IR0Instruction<"x86_mov_rip", CTX>(target), id(id) {}
+        MovRip(SSARegisterHandle target, size_t id): IR0Instruction<CTX>(target, "x86_mov_rip"), id(id) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 

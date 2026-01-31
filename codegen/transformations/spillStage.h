@@ -66,7 +66,8 @@ void spillStage(ControlFlowGraph<CTX>& cfg) {
                     auto dummy = cfg.allocateDummy(size);
                     ctx.template patch<instructions::PointerStore>(ptr, dummy);
                     i->patchDst(leak, dummy);
-                    assert(i->target == dummy);
+                    // FIXME mostly for debugging, but relaxed bcs of BaseCall and weird handling of multi value return ._.
+                    // assert(i->target == dummy);
                 });
             }
         }

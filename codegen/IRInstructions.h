@@ -31,17 +31,17 @@ namespace instructions {
     };
 
     template<typename CTX>
-    class NoOp: public IR0Instruction<"noop", CTX> {
+    class NoOp: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(NoOp)
-        using IR0Instruction<"noop", CTX>::IR0Instruction;
+        NoOp(): IR0Instruction<CTX>("noop") {}
 
         void generate(CTX::GEN &gen) override {}
     };
 
     template<typename CTX>
-    struct FallTrough: public IRBaseInstruction<size_t, "fall_trough", CTX> {
+    struct FallTrough: public IRBaseInstruction<size_t, CTX> {
         PUB_VIRTUAL_COPY(FallTrough)
-        FallTrough(size_t value): IRBaseInstruction<size_t, "fall_trough", CTX>(SSARegisterHandle::invalid(), value) {}
+        FallTrough(size_t value): IRBaseInstruction<size_t, CTX>(SSARegisterHandle::invalid(), "fall_trough", value) {}
 
         void generate(CTX::GEN& ctx) override {
             ctx.assignPhis(this->value);
@@ -53,9 +53,9 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct BoolNot: public IR1Instruction<"bool_not", CTX> {
+    struct BoolNot: public IR1Instruction<CTX> {
     PUB_VIRTUAL_COPY(BoolNot)
-        using IR1Instruction<"bool_not", CTX>::IR1Instruction;
+        BoolNot(SSARegisterHandle target, SSARegisterHandle value): IR1Instruction<CTX>(target, "bool_not", value) {}
 
         void generate(CTX::GEN &gen) override {
             auto temp = gen.allocateTemp(1);
@@ -68,27 +68,27 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct I2F: IR1Instruction<"i64ToF64", CTX> {
+    struct I2F: IR1Instruction<CTX> {
     PUB_VIRTUAL_COPY(I2F)
-        using IR1Instruction<"i64ToF64", CTX>::IR1Instruction;
+        I2F(SSARegisterHandle tgt, SSARegisterHandle value): IR1Instruction<CTX>(tgt, "i64ToF64", value) {}
 
         void generate(CTX::GEN&gen) override {
-            gen.assembler.int2f64(gen.getReg(this->target), gen.getReg(this->value));
+            gen.assembler.int2f64(gen.getReg(this->target), gen.getReg(this->getValue()));
         }
     };
 
     template<typename CTX>
-    struct F2I: IR1Instruction<"f64ToI64", CTX> {
+    struct F2I: IR1Instruction<CTX> {
     PUB_VIRTUAL_COPY(F2I)
-        using IR1Instruction<"f64ToI64", CTX>::IR1Instruction;
+        F2I(SSARegisterHandle tgt, SSARegisterHandle value): IR1Instruction<CTX>(tgt, "f64ToI64", value) {}
 
         void generate(CTX::GEN& gen) override {
-            gen.assembler.f64ToInt(gen.getReg(this->target), gen.getReg(this->value));
+            gen.assembler.f64ToInt(gen.getReg(this->target), gen.getReg(this->getValue()));
         }
     };
 
     template<typename CTX>
-    struct PhiFunction: public NamedIrInstruction<"phi", CTX> {
+    struct PhiFunction: public NamedIrInstruction<CTX> {
     PUB_VIRTUAL_COPY(PhiFunction)
         void print(std::ostream& stream) override {
             this->basePrint(stream, "{}", stringify(versions, {{", ", "", ""}}));
@@ -100,10 +100,10 @@ namespace instructions {
             }
         }
 
-        PhiFunction(SSARegisterHandle target, map<BlockId, SSARegisterHandle> versions) : NamedIrInstruction<"phi", CTX>(target),
+        PhiFunction(SSARegisterHandle target, map<BlockId, SSARegisterHandle> versions) : NamedIrInstruction<CTX>(target, "phi", {}),
                                                                                          versions(std::move(versions)) {}
 
-        PhiFunction(SSARegisterHandle target, span<pair<SSARegisterHandle, BlockId>> versions) : NamedIrInstruction<"phi", CTX>(target) {
+        PhiFunction(SSARegisterHandle target, span<pair<SSARegisterHandle, BlockId>> versions) : NamedIrInstruction<CTX>(target, "phi", {}) {
             for (auto version: versions) {
                 this->versions.emplace(version.second, version.first);
             }
@@ -171,9 +171,10 @@ namespace instructions {
     };
 
     template<typename CTX>
-    class Assign: public IR1Instruction<"assign", CTX> {
+    class Assign: public IR1Instruction<CTX> {
     PUB_VIRTUAL_COPY(Assign)
-        using IR1Instruction<"assign", CTX>::IR1Instruction;
+    public:
+        Assign(SSARegisterHandle tgt, SSARegisterHandle value): IR1Instruction<CTX>(tgt, "assign", value) {}
 
         void generate(CTX::GEN& gen) override {
             auto destHandle = gen.getReg(this->target);
@@ -184,7 +185,7 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Branch: public NamedIrInstruction<"branch", CTX> {
+    struct Branch: public NamedIrInstruction<CTX> {
     PUB_VIRTUAL_COPY(Branch)
         SSARegisterHandle condition;
         BlockId scopeT;
@@ -198,7 +199,7 @@ namespace instructions {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        Branch(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"branch", CTX>(SSARegisterHandle::invalid(), {}), condition(condition), scopeT(t), scopeF(f) {
+        Branch(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "branch", {}), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -233,7 +234,7 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct BranchCond: public NamedIrInstruction<"branch_cond", CTX> {
+    struct BranchCond: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(BranchCond)
         JumpCondType type;
         SSARegisterHandle lhs;
@@ -250,7 +251,7 @@ namespace instructions {
             this->basePrint(stream, "{} {} {} ? @{} : @{}", lhs.toString(), toString1(type), rhs.toString(), scopeT, scopeF);
         }
 
-        BranchCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<"branch_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
+        BranchCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "branch_cond", {}), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
 
         };
 
@@ -297,7 +298,7 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct JumpFalse: public NamedIrInstruction<"jump_false", CTX> {
+    struct JumpFalse: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(JumpFalse)
         SSARegisterHandle condition;
         BlockId scopeT;
@@ -311,7 +312,7 @@ namespace instructions {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        JumpFalse(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"jump_false", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        JumpFalse(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "jump_false", {}), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -349,7 +350,7 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct JumpTrue: public NamedIrInstruction<"jump_true", CTX> {
+    struct JumpTrue: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(JumpTrue)
         SSARegisterHandle condition;
         BlockId scopeT;
@@ -363,7 +364,7 @@ namespace instructions {
             this->basePrint(stream, "{}, {}, {}", condition.toString(), scopeT, scopeF);
         }
 
-        JumpTrue(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<"jump_true", CTX>(SSARegisterHandle::invalid()), condition(condition), scopeT(t), scopeF(f) {
+        JumpTrue(SSARegisterHandle condition, BlockId t, BlockId f): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "jump_true", {}), condition(condition), scopeT(t), scopeF(f) {
 
         };
 
@@ -399,11 +400,11 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Jump: public IRBaseInstruction<BlockId, "jump", CTX> {
+    struct Jump: public IRBaseInstruction<BlockId, CTX> {
     PUB_VIRTUAL_COPY(Jump)
         bool shouldAssign = true;
 
-        Jump(BlockId value): IRBaseInstruction<BlockId, "jump", CTX>(SSARegisterHandle::invalid(), value) {}
+        Jump(BlockId value): IRBaseInstruction<BlockId, CTX>(SSARegisterHandle::invalid(), "jump", value) {}
 
         void generate(CTX::GEN& ctx) override {
             if (shouldAssign) ctx.assignPhis(this->value);
@@ -418,7 +419,7 @@ namespace instructions {
 
 
     template<typename CTX>
-    struct JumpCond: public NamedIrInstruction<"jump_cond", CTX> {
+    struct JumpCond: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(JumpCond)
         JumpCondType type;
         SSARegisterHandle lhs;
@@ -435,7 +436,7 @@ namespace instructions {
             this->basePrint(stream, " {} {} {} ? @{} : @{}", lhs, toString1(type), rhs, scopeT, scopeF);
         }
 
-        JumpCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<"jump_cond", CTX>(SSARegisterHandle::invalid()), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
+        JumpCond(JumpCondType type, SSARegisterHandle lhs, SSARegisterHandle rhs, BlockId t, BlockId f): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "jump_cond", {}), type(type), lhs(lhs), rhs(rhs), scopeT(t), scopeF(f) {
 
         };
 
@@ -472,11 +473,11 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Return: public IR1Instruction<"return", CTX> {
+    struct Return: public IR1Instruction<CTX> {
     PUB_VIRTUAL_COPY(Return)
-        using IR1Instruction<"return", CTX>::IR1Instruction;
-
-        explicit Return(SSARegisterHandle ret): IR1Instruction<"return", CTX>(SSARegisterHandle::invalid(), ret) {}
+        explicit Return(SSARegisterHandle ret): IR1Instruction<CTX>(SSARegisterHandle::invalid(), "return", ret) {
+        assert(ret.isValid());
+    }
 
         void generate(CTX::GEN& gen) override {
             if (!this->getValue().isValid()) return gen.assembler.generateRet();
@@ -490,12 +491,12 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct ReturnCompound: public NamedIrInstruction<"return_compound", CTX> {
+    struct ReturnCompound: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(ReturnCompound)
 
         std::vector<SSARegisterHandle> parts;
 
-        explicit ReturnCompound(std::vector<SSARegisterHandle> parts): NamedIrInstruction<"return_compound", CTX>(SSARegisterHandle::invalid(), parts), parts(std::move(parts)) {}
+        explicit ReturnCompound(std::vector<SSARegisterHandle> parts): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "return_compound", parts), parts(std::move(parts)) {}
 
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
@@ -514,12 +515,12 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct IntLiteral: public IR0Instruction<"int", CTX> {
+    struct IntLiteral: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(IntLiteral)
         size_t value;
         bool isSigned;
 
-        IntLiteral(SSARegisterHandle target, size_t value, bool isSigned): IR0Instruction<"int", CTX>(target), value(value), isSigned(isSigned) {}
+        IntLiteral(SSARegisterHandle target, size_t value, bool isSigned): IR0Instruction<CTX>(target, "int"), value(value), isSigned(isSigned) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
@@ -537,9 +538,9 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct CharLiteral: public IRBaseInstruction<char, "char", CTX> {
+    struct CharLiteral: public IRBaseInstruction<char, CTX> {
     PUB_VIRTUAL_COPY(CharLiteral)
-        using IRBaseInstruction<char, "char", CTX>::IRBaseInstruction;
+        CharLiteral(SSARegisterHandle tgt, char value): IRBaseInstruction<char, CTX>(tgt, "char", value) {}
 
         void generate(CTX::GEN& gen) override {
             auto res = gen.getReg(this->target);
@@ -548,9 +549,9 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct FloatLiteral: public IRBaseInstruction<float, "float", CTX> {
+    struct FloatLiteral: public IRBaseInstruction<float, CTX> {
     PUB_VIRTUAL_COPY(FloatLiteral)
-        using IRBaseInstruction<float, "float", CTX>::IRBaseInstruction;
+        FloatLiteral(SSARegisterHandle tgt, float value): IRBaseInstruction<float, CTX>(tgt, "float", value) {}
 
         void generate(CTX::GEN& gen) override {
             auto res = gen.getReg(this->target);
@@ -559,9 +560,9 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct DoubleLiteral: public IRBaseInstruction<double, "double", CTX> {
+    struct DoubleLiteral: public IRBaseInstruction<double, CTX> {
         PUB_VIRTUAL_COPY(DoubleLiteral)
-        using IRBaseInstruction<double, "double", CTX>::IRBaseInstruction;
+        DoubleLiteral(SSARegisterHandle tgt, double value): IRBaseInstruction<double, CTX>(tgt, "double", value) {}
 
         void generate(CTX::GEN& gen) override {
             auto res = gen.getReg(this->target);
@@ -570,9 +571,9 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct BoolLiteral: public IRBaseInstruction<bool, "bool", CTX> {
+    struct BoolLiteral: public IRBaseInstruction<bool, CTX> {
     PUB_VIRTUAL_COPY(BoolLiteral)
-        using IRBaseInstruction<bool, "bool", CTX>::IRBaseInstruction;
+        BoolLiteral(SSARegisterHandle tgt, bool value): IRBaseInstruction<bool, CTX>(tgt, "bool", value) {}
 
         void generate(CTX::GEN &gen) override {
             auto res = gen.getReg(this->target);
@@ -581,11 +582,9 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct VoidReturn: public IR0Instruction<"void_return", CTX> {
+    struct VoidReturn: public IR0Instruction<CTX> {
     PUB_VIRTUAL_COPY(VoidReturn)
-        using IR0Instruction<"void_return", CTX>::IR0Instruction;
-
-        // explicit VoidReturn(): IR0Instruction<"void_return", CTX>(SSARegisterHandle::invalid()) {}
+        VoidReturn(): IR0Instruction<CTX>(SSARegisterHandle::invalid(), "void_return") {}
 
         void generate(CTX::GEN& gen) override {
             gen.assembler.generateRet();
@@ -595,18 +594,20 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Invalid: public IR0Instruction<"invalid", CTX> {
+    struct Invalid: public IR0Instruction<CTX> {
     PUB_VIRTUAL_COPY(Invalid)
+        Invalid(): IR0Instruction<CTX>(SSARegisterHandle::invalid(), "invalid") {}
+
         void generate(CTX::GEN &gen) override {
             TODO();
         }
     };
 
     template<typename CTX>
-    struct Arg: public IR0Instruction<"arg", CTX> {
+    struct Arg: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(Arg)
 
-        Arg(SSARegisterHandle tgt): IR0Instruction<"arg", CTX>(tgt) {}
+        Arg(SSARegisterHandle tgt): IR0Instruction<CTX>(tgt, "arg") {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
@@ -619,13 +620,13 @@ namespace instructions {
 
 
     template<typename CTX>
-    struct PointerStore: public NamedIrInstruction<"ptr_store", CTX> {
+    struct PointerStore: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(PointerStore)
         SSARegisterHandle ptr;
         SSARegisterHandle value;
         i64 offset;
 
-        PointerStore(SSARegisterHandle ptr, SSARegisterHandle value, i64 offset = 0): NamedIrInstruction<"ptr_store", CTX>(SSARegisterHandle::invalid(), ptr, value), ptr(ptr), value(value), offset(offset) {}
+        PointerStore(SSARegisterHandle ptr, SSARegisterHandle value, i64 offset = 0): NamedIrInstruction<CTX>(SSARegisterHandle::invalid(), "ptr_store", {ptr, value}), ptr(ptr), value(value), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(ptr);
@@ -646,12 +647,12 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct PointerLoad: public NamedIrInstruction<"ptr_load", CTX> {
+    struct PointerLoad: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(PointerLoad)
         SSARegisterHandle ptr;
         i64 offset;
 
-        PointerLoad(SSARegisterHandle target, SSARegisterHandle ptr, size_t size, i64 offset): NamedIrInstruction<"ptr_load", CTX>(target, ptr), ptr(ptr), offset(offset) {}
+        PointerLoad(SSARegisterHandle target, SSARegisterHandle ptr, size_t size, i64 offset): NamedIrInstruction<CTX>(target, "ptr_load", {ptr}), ptr(ptr), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(ptr);
@@ -671,11 +672,11 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct ValueSize: public NamedIrInstruction<"value_size", CTX> {
+    struct ValueSize: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(ValueSize)
         SSARegisterHandle subject;
 
-        ValueSize(SSARegisterHandle target, SSARegisterHandle subject): NamedIrInstruction<"value_size", CTX>(target), subject(subject) {}
+        ValueSize(SSARegisterHandle target, SSARegisterHandle subject): NamedIrInstruction<CTX>(target, "value_size", {}), subject(subject) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(subject);
@@ -695,11 +696,11 @@ namespace instructions {
 
     /// stack allocation - allocate **Pointer** to nB sized memory location
     template<typename CTX>
-    struct AllocaPtr: public IR0Instruction<"alloca_ptr", CTX> {
+    struct AllocaPtr: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(AllocaPtr)
         size_t size;
 
-        AllocaPtr(SSARegisterHandle target, size_t size): IR0Instruction<"alloca_ptr", CTX>(target), size(size) {}
+        AllocaPtr(SSARegisterHandle target, size_t size): IR0Instruction<CTX>(target, "alloca_ptr"), size(size) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
@@ -714,13 +715,13 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct BitExtract: public IR1Instruction<"bit_extract", CTX> {
+    struct BitExtract: public IR1Instruction<CTX> {
         PUB_VIRTUAL_COPY(BitExtract)
         SSARegisterHandle subject;
         i64 offset;
         i64 size;
 
-        BitExtract(SSARegisterHandle target, SSARegisterHandle subject, i64 offset, i64 size): IR1Instruction<"bit_extract", CTX>(target, subject), subject(subject), offset(offset), size(size) {}
+        BitExtract(SSARegisterHandle target, SSARegisterHandle subject, i64 offset, i64 size): IR1Instruction<CTX>(target, "bit_extract", subject), subject(subject), offset(offset), size(size) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(subject);
@@ -736,11 +737,11 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct MakeCompound: public NamedIrInstruction<"make_compound", CTX> {
+    struct MakeCompound: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(MakeCompound)
         std::vector<SSARegisterHandle> inputs;
 
-        MakeCompound(SSARegisterHandle target, std::vector<SSARegisterHandle> inputs): NamedIrInstruction<"make_compound", CTX>(target, inputs), inputs(inputs) {}
+        MakeCompound(SSARegisterHandle target, std::vector<SSARegisterHandle> inputs): NamedIrInstruction<CTX>(target, "make_compound", inputs), inputs(inputs) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             for (auto& input : inputs) fn(input);
@@ -756,10 +757,10 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Dummy: public IR0Instruction<"dummy", CTX> {
+    struct Dummy: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(Dummy)
 
-        Dummy(SSARegisterHandle target): IR0Instruction<"dummy", CTX>(target) {}
+        Dummy(SSARegisterHandle target): IR0Instruction<CTX>(target, "dummy") {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
@@ -774,11 +775,11 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct Builtin: public IR0Instruction<"builtin", CTX> {
+    struct Builtin: public IR0Instruction<CTX> {
         PUB_VIRTUAL_COPY(Builtin)
         std::string type;
 
-        Builtin(std::string type): IR0Instruction<"builtin", CTX>(), type(type) {}
+        Builtin(std::string type): IR0Instruction<CTX>("builtin"), type(type) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
         }
@@ -793,14 +794,14 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct COW: public NamedIrInstruction<"cow", CTX> {
+    struct COW: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(COW)
 
         SSARegisterHandle src;
         SSARegisterHandle sub;
         long offset;
 
-        COW(SSARegisterHandle target, SSARegisterHandle sub, SSARegisterHandle src, long offset): NamedIrInstruction<"cow", CTX>(target, sub, src), src(src), sub(sub), offset(offset) {}
+        COW(SSARegisterHandle target, SSARegisterHandle sub, SSARegisterHandle src, long offset): NamedIrInstruction<CTX>(target, "cow", {sub, src}), src(src), sub(sub), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(src);
@@ -817,12 +818,12 @@ namespace instructions {
     };
 
     template<typename CTX>
-    struct AddressOf: public NamedIrInstruction<"address_of", CTX> {
+    struct AddressOf: public NamedIrInstruction<CTX> {
         PUB_VIRTUAL_COPY(AddressOf)
         SSARegisterHandle obj;
         size_t offset;
 
-        AddressOf(SSARegisterHandle target, SSARegisterHandle obj, size_t offset = 0): NamedIrInstruction<"address_of", CTX>(target, obj), obj(obj) {}
+        AddressOf(SSARegisterHandle target, SSARegisterHandle obj, size_t offset = 0): NamedIrInstruction<CTX>(target, "address_of", {obj}), obj(obj), offset(offset) {}
 
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {
             fn(obj);

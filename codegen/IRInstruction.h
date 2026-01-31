@@ -3,7 +3,6 @@
 
 #include "forward.h"
 #include "SSARegisterHandle.h"
-#include "../utils/StringLiteral.h"
 #include "../utils/VirtualCopy.h"
 #include "../utils/stringify.h"
 #include "BlockId.h"
@@ -14,6 +13,7 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     string name;
     CodeBlock<CTX>* codeBlock = nullptr;
     std::vector<SSARegisterHandle> srcs;
+    std::vector<SSARegisterHandle> additionalTargets;
 
     typedef CodeBlock<CTX> BaseGen;
 
@@ -27,9 +27,15 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     }
 
     std::set<SSARegisterHandle> validDests() const {
-        if (!target.isValid()) return {};
+        std::set<SSARegisterHandle> res;
 
-        return {target};
+        for (auto tgt : additionalTargets) {
+            if (tgt.isValid()) res.emplace(tgt);
+        }
+
+        if (target.isValid()) res.emplace(target);
+
+        return res;
     }
 
     CodeBlock<CTX>* getBB() {
@@ -157,23 +163,23 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
         });
     }
 
-    void patchDst(SSARegisterHandle old, SSARegisterHandle newer) {
+    virtual void patchDst(SSARegisterHandle old, SSARegisterHandle newer) {
         if (target == old) target = newer;
     }
 private:
     virtual void visitSrc(function<void(SSARegisterHandle&)> fn) {
-        for (auto src : srcs) {
+        for (auto& src : srcs) {
             fn(src);
         }
     }
 };
 
-template<StringLiteral V, typename CTX>
+template<typename CTX>
 struct NamedIrInstruction: public IRInstruction<CTX> {
-    NamedIrInstruction(SSARegisterHandle tgt, std::vector<SSARegisterHandle> srcs): IRInstruction<CTX>(tgt, string(V.asView()), srcs) {}
+    NamedIrInstruction(SSARegisterHandle tgt, std::string name, std::vector<SSARegisterHandle> srcs): IRInstruction<CTX>(tgt, name, srcs) {}
 
     template<typename... Args>
-    NamedIrInstruction(SSARegisterHandle tgt, Args... args): IRInstruction<CTX>(tgt, string(V.asView()), {}) {
+    NamedIrInstruction(SSARegisterHandle tgt, std::string name, Args... args): IRInstruction<CTX>(tgt, name, {}) {
         static_assert(sizeof...(Args) >= 1);
     }
 };
@@ -200,13 +206,13 @@ struct IR2Instruction2: public IRInstruction<CTX> {
     void generate(BaseGen& gen) override = 0;
 };
 
-template<StringLiteral V, typename CTX>
+template<typename CTX>
 struct IR1Instruction: public IRInstruction<CTX> {
     SSARegisterHandle getValue() {
         return this->srcs[0];
     }
 
-    IR1Instruction(SSARegisterHandle tgt, SSARegisterHandle value): IRInstruction<CTX>(tgt, string(V.asView()), {value}) {
+    IR1Instruction(SSARegisterHandle tgt, std::string name, SSARegisterHandle value): IRInstruction<CTX>(tgt, name, {value}) {
 
     }
 
@@ -215,10 +221,10 @@ struct IR1Instruction: public IRInstruction<CTX> {
     }
 };
 
-template<StringLiteral V, typename CTX>
+template<typename CTX>
 struct IR0Instruction: public IRInstruction<CTX> {
-    IR0Instruction(): IRInstruction<CTX>(SSARegisterHandle::invalid(), string(V.asView()), {}) {}
-    IR0Instruction(SSARegisterHandle target): IRInstruction<CTX>(target, string(V.asView()), {}) {}
+    IR0Instruction(std::string name): IRInstruction<CTX>(SSARegisterHandle::invalid(), name, {}) {}
+    IR0Instruction(SSARegisterHandle target, std::string name): IRInstruction<CTX>(target, name, {}) {}
 
     void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
@@ -227,12 +233,12 @@ struct IR0Instruction: public IRInstruction<CTX> {
     }
 };
 
-template<typename T, StringLiteral V, typename CTX>
-struct IRBaseInstruction: public NamedIrInstruction<V, CTX> {
+template<typename T, typename CTX>
+struct IRBaseInstruction: public NamedIrInstruction<CTX> {
     T value;
     using BaseGen = CTX::GEN;
 
-    IRBaseInstruction(SSARegisterHandle tgt, T value): NamedIrInstruction<V, CTX>(tgt, {}), value(value) {
+    IRBaseInstruction(SSARegisterHandle tgt, std::string name, T value): NamedIrInstruction<CTX>(tgt, name, {}), value(value) {
 
     }
 

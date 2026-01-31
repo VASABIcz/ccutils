@@ -863,10 +863,10 @@ struct ControlFlowGraph {
         }
     }
 
-    IRInstruction<CTX> *resolveInstruction(SSARegisterHandle handle) {
+    IRInstruction<CTX>* resolveInstruction(SSARegisterHandle handle) {
         IRInstruction<CTX> *res = nullptr;
-        forEachInstruction([&](auto &inst, auto &) {
-            if (inst.target == handle) res = &inst;
+        forEachInstruction([&](IRInstruction<CTX>& inst, auto &) {
+            if (inst.validDests().contains(handle)) res = &inst;
         });
         return res;
     }

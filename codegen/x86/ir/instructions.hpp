@@ -5,17 +5,21 @@
 
 struct RET: X86Instruction {
     DEBUG_INFO2(RET)
-    void init(std::initializer_list<BaseRegister*> uses) { setUse(uses); }
+    void init(BetterSpan<BaseRegister*> uses) {
+        setUse(std::vector<BaseRegister*>{uses.begin(), uses.end()});
+    }
 };
 
 struct FAKE_DEF: X86Instruction {
     DEBUG_INFO2(FAKE_DEF)
     void init(BaseRegister* def) { addDef(def); }
+    void init(BetterSpan<BaseRegister*> def) { setDef(std::vector<BaseRegister*>{def.begin(), def.end()}); }
 };
 
 struct FAKE_USE: X86Instruction {
     DEBUG_INFO2(FAKE_USE)
     void init(BaseRegister* def) { addUse(def); }
+    void init(BetterSpan<BaseRegister*> def) { setUse(std::vector<BaseRegister*>{def.begin(), def.end()}); }
 };
 
 struct CALLRIP: X86Instruction {

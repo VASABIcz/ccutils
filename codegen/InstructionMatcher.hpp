@@ -12,21 +12,29 @@ struct BasePattern {
     }
 };
 
-struct SimplePattern: BasePattern {
-    SimplePattern(const char* base, std::vector<BasePattern*> params) : base(base), params(params) {}
+struct SimplePattern : BasePattern {
+    SimplePattern(const char* base, std::vector<BasePattern*> params) : base(base), params(params) {
+    }
+
     const char* base;
     std::vector<BasePattern*> params;
 };
 
-struct SimpleWildPattern: BasePattern {
-    SimpleWildPattern(const char* base) : base(base) {}
+struct SimpleWildPattern : BasePattern {
+    SimpleWildPattern(const char* base) : base(base) {
+    }
+
     const char* base;
 };
 
-struct WildCardPattern: BasePattern {};
+struct WildCardPattern : BasePattern {
+};
 
-struct BinOpPattern: BasePattern {
-    BinOpPattern(Assembler::BinaryOp op, Assembler::BaseDataType type, BasePattern* lhs, BasePattern* rhs) : op(op), type(type), lhs(lhs), rhs(rhs) {}
+struct BinOpPattern : BasePattern {
+    BinOpPattern(Assembler::BinaryOp op, Assembler::BaseDataType type, BasePattern* lhs,
+                 BasePattern* rhs) : op(op), type(type), lhs(lhs), rhs(rhs) {
+    }
+
     Assembler::BinaryOp op;
     Assembler::BaseDataType type;
     BasePattern* lhs;
@@ -36,21 +44,34 @@ struct BinOpPattern: BasePattern {
 template<typename CTX>
 struct InstructionMatcher {
     struct MatchedInstructions {
-        IRInstruction<CTX>* inst = nullptr;
-        std::vector<MatchedInstructions*> params;
+        IRInstruction<CTX>* mInst = nullptr;
+        SSARegisterHandle reg;
+        std::vector<MatchedInstructions*> mParams;
 
         template<typename... Args>
         MatchedInstructions& operator[](Args... args) {
             MatchedInstructions* self = this;
             for (auto arg: {args...}) {
-                self = self->params[arg];
+                self = self->mParams[arg];
             }
             return *self;
         }
 
-        IRInstruction<CTX>* operator->() { return inst; }
+        SSARegisterHandle dst() { return reg; }
 
-        IRInstruction<CTX>* operator*() { return inst; }
+        IRInstruction<CTX>* inst() { return this->mInst; }
+
+        std::span<MatchedInstructions*> params() { return this->mParams; }
+
+        std::vector<IRInstruction<CTX>*> getParams() {
+            std::vector<IRInstruction<CTX>*> res;
+
+            for (auto arg: mParams) {
+                res.push_back(arg->inst());
+            }
+
+            return res;
+        }
     };
 
     template<typename T, typename... Args>
@@ -60,12 +81,12 @@ struct InstructionMatcher {
 
     template<template<typename> typename T, typename... Args>
     BasePattern* makePattern(Args... arg) {
-        return makePattern<T<CTX>>(std::forward<Args>(arg)...);
+        return makePattern<T<CTX> >(std::forward<Args>(arg)...);
     }
 
     template<template<typename> typename T>
     BasePattern* makePattern() {
-        return makePattern<T<CTX>>();
+        return makePattern<T<CTX> >();
     }
 
     template<typename T>
@@ -80,7 +101,7 @@ struct InstructionMatcher {
 
     template<template<typename> typename T>
     BasePattern* makeWildPattern() {
-        return makeWildPattern<T<CTX>>();
+        return makeWildPattern<T<CTX> >();
     }
 
     template<Assembler::BinaryOp OP, Assembler::BaseDataType TYP>
@@ -88,61 +109,68 @@ struct InstructionMatcher {
         return new BinOpPattern{OP, TYP, lhs, rhs};
     }
 
-    static BasePattern* getWild() { return new WildCardPattern(); }
-
-    bool matchPattern(
+    MatchedInstructions* tryMatch(
         ControlFlowGraph<CTX>& cfg,
-        IRInstruction<CTX>* inst,
-        BasePattern* pattern,
-        std::vector<IRInstruction<CTX>*>& wildcards,
-        std::vector<IRInstruction<CTX>*>& consumed,
-        MatchedInstructions* matched
+        SSARegisterHandle reg,
+        BasePattern* pattern
     ) {
-        matched->inst = inst;
+        // FIXME this should handle case if multiple definitions exist and fail
+        auto inst = cfg.resolveInstruction(reg);
+
+        return matchPattern(cfg, inst, reg, pattern);
+    }
+
+    MatchedInstructions* matchPattern(
+        ControlFlowGraph<CTX>& cfg,
+        IRInstruction<CTX>* inst, // FIXME null is valid value??? but only wildcard matches it???
+        SSARegisterHandle reg,
+        BasePattern* pattern
+    ) {
+        // assert(inst != nullptr);
         return dispatch(
-                   pattern,
-                   CASE_VAL(BinOpPattern*, bin) {
-                       instructions::BinaryInstruction<CTX>* bbin = inst->template cst<instructions::BinaryInstruction<CTX>>();
-                       if (bbin == nullptr) return false;
-                       if (bbin->op != bin->op) return false;
-                       if (bbin->type != bin->type) return false;
-                       consumed.push_back(inst);
-                       auto l = new MatchedInstructions{};
-                       auto r = new MatchedInstructions{};
-                       matched->params.push_back(l);
-                       matched->params.push_back(r);
-                       return matchPattern(cfg, cfg.resolveInstruction(bbin->getSrc(0)), bin->lhs, wildcards, consumed, l) &&
-                              matchPattern(cfg, cfg.resolveInstruction(bbin->getSrc(1)), bin->rhs, wildcards, consumed, r);
-                   },
-                   CASE_VAL(WildCardPattern*) {
-                       wildcards.push_back(inst);
-                       return true;
-                   },
-                   CASE_VAL(SimpleWildPattern*, sim1) {
-                       if (typeid(*inst).name() != sim1->base) return false;
+            pattern,
+            CASE_VAL(BinOpPattern*, bin) -> MatchedInstructions* {
+                if (inst == nullptr) return nullptr;
+                instructions::BinaryInstruction<CTX>* bbin = inst->template cst<instructions::BinaryInstruction<CTX>>();
+                if (bbin == nullptr) return nullptr;
+                if (bbin->op != bin->op) return nullptr;
+                if (bbin->type != bin->type) return nullptr;
+                auto lm = tryMatch(cfg, bbin->getSrc(0), bin->lhs);
+                if (lm == nullptr) return nullptr;
+                auto rm = tryMatch(cfg, bbin->getSrc(1), bin->rhs);
+                if (rm == nullptr) return nullptr;
+                return new MatchedInstructions{inst, reg, {lm, rm}};
+            },
+            CASE_VAL(WildCardPattern*) {
+                return new MatchedInstructions{inst, reg};
+            },
+            CASE_VAL(SimpleWildPattern*, sim1) -> MatchedInstructions* {
+                if (inst == nullptr) return nullptr;
+                if (typeid(*inst).name() != sim1->base) return nullptr;
 
-                       for (auto i = 0ul; i < inst->srcCount(); i++) {
-                           auto ii = new MatchedInstructions{};
-                           auto didMatch = matchPattern(cfg, cfg.resolveInstruction(inst->getSrc(i)), getWild(), wildcards, consumed, ii);
-                           matched->params.push_back(ii);
-                           if (!didMatch) return false;
-                       }
-                       consumed.push_back(inst);
-                       return true;
-                   },
-                   CASE_VAL(SimplePattern*, sim) {
-                       if (typeid(*inst).name() != sim->base) return false;
+                std::vector<MatchedInstructions*> matched;
+                for (auto i = 0ul; i < inst->srcCount(); i++) {
+                    auto didMatch = tryMatch(cfg, inst->getSrc(i), getWild());
+                    if (didMatch == nullptr) return nullptr;
+                    matched.push_back(didMatch);
+                }
+                return new MatchedInstructions{inst, reg, matched};
+            },
+            CASE_VAL(SimplePattern*, sim) -> MatchedInstructions* {
+                if (inst == nullptr) return nullptr;
+                if (typeid(*inst).name() != sim->base) return nullptr;
 
-                       for (auto i = 0ul; i < sim->params.size(); i++) {
-                           auto ii = new MatchedInstructions{};
-                           auto didMatch = matchPattern(cfg, cfg.resolveInstruction(inst->getSrc(i)), sim->params[i], wildcards, consumed, ii);
-                           matched->params.push_back(ii);
-                           if (!didMatch) return false;
-                       }
-                       consumed.push_back(inst);
-                       return true;
-                   },
-                   CASE_VAL(BasePattern*)->bool { TODO("unahndled case") }
+                std::vector<MatchedInstructions*> matched;
+                for (auto i = 0ul; i < sim->params.size(); i++) {
+                    auto didMatch = tryMatch(cfg, inst->getSrc(i), sim->params[i]);
+                    if (didMatch == nullptr) return nullptr;
+                    matched.push_back(didMatch);
+                }
+                return new MatchedInstructions{inst, reg, matched};
+            },
+            CASE_VAL(BasePattern*) -> MatchedInstructions* { TODO("unahndled case") }
         ).unwrap();
     }
+
+    static BasePattern* getWild() { return new WildCardPattern(); }
 };

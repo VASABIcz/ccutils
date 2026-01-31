@@ -25,6 +25,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
     auto sorted = cfg.getReversePostOrder();
     std::map<SSARegisterHandle, std::vector<SSARegisterHandle>> splitRegs;
     auto splitPtr = &splitRegs;
+    println("SORT IS {}", sorted);
 
     for (auto node: sorted) {
         cfg.getBlock(node).forEach([&](IRInstruction<CTX>& inst) {
@@ -52,7 +53,8 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
 
                         patcher.addPatch(store, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto [i, arg]: (*splitPtr)[store->value] | views::enumerate) {
-                                ctx.template patch<instructions::PointerStore>(store->ptr, arg, store->offset + (i * 8));
+                                ctx.template patch<
+                                    instructions::PointerStore>(store->ptr, arg, store->offset + (i * 8));
                             }
                         });
                     }
@@ -65,7 +67,8 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                     // assert(extract->size == 8); // for now assume 8B, we can support larger sizes in future
 
                     patcher.addPatch(extract, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                        ctx.template patch<instructions::Assign>(extract->target, (*splitPtr)[extract->subject][extract->offset / 8]);
+                        ctx.template patch<instructions::Assign>(extract->target,
+                                                                 (*splitPtr)[extract->subject][extract->offset / 8]);
                     });
                 },
                 CASEP(instructions::PhiFunction<CTX>, phi) { logger.DEBUG("[dec] TODO phi {}", phi->target); },
@@ -73,11 +76,16 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                     auto size = cfg.getRecord(mC->target).sizeBytes();
 
                     logger.DEBUG("[dec] should split make_compound {} its size is {}", mC->target, size);
-                    splitRegs.emplace(mC->target, std::vector<SSARegisterHandle>{});
                     assert(size % 8 == 0);
                     patcher.addPatch(mC, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                        for (auto input: mC->inputs) {
-                            (*splitPtr)[mC->target].push_back(input);
+                        if (splitPtr->contains(mC->target)) {
+                            for (auto [tgt, input]: views::zip((*splitPtr)[mC->target], mC->inputs)) {
+                                ctx.template patch<instructions::Assign>(tgt, input);
+                            }
+                        } else {
+                            for (auto input: mC->inputs) {
+                                (*splitPtr)[mC->target].push_back(input);
+                            }
                         }
                     });
                 },
@@ -88,51 +96,49 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
 
                         patcher.addPatch(ret, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             assert((*splitPtr).at(ret->getValue()).size() >= 2);
-                            ctx.template patch<instructions::ReturnCompound>((*splitPtr).at(ret->getValue()));
+                            ctx.template patch<instructions::ReturnCompound>(splitPtr->at(ret->getValue()));
                         });
                     }
                 },
-                CASEP(x86::inst::CallRIP<CTX>, callRip) {
-                    auto size = callRip->target.isValid() ? cfg.getRecord(callRip->target).sizeBytes() : 0;
+                CASEP(x86::inst::BaseCall<CTX>, callRip) {
+                    assert(callRip->results.size() <= 1);
+                    auto tgt = SSARegisterHandle::invalid();
+                    auto size = 0ul;
+                    if (callRip->results.size() != 0) {
+                        tgt = callRip->results[0];
+                        size = cfg.getRecord(tgt).sizeBytes();
+                    }
 
-                    if (size > 8) {
-                        assert(size % 8 == 0);
-                        logger.DEBUG("[dec] should rewrite call {} it returns {}", callRip->target, size);
+                    assert(size <= 7 || size % 8 == 0);
+                    logger.DEBUG("[dec] should rewrite call {} it returns {}", tgt, size);
 
-                        patcher.addPatch(callRip, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                            std::vector<SSARegisterHandle> dummies;
+                    patcher.addPatch(callRip, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
+                        std::vector<SSARegisterHandle> dummies;
+                        if (size > 8) {
                             for (auto i = 0UL; i < size / 8; i++) {
                                 auto dummy = cfg.allocateDummy();
-                                (*splitPtr)[callRip->target].push_back(dummy);
+                                (*splitPtr)[tgt].push_back(dummy);
                                 dummies.push_back(dummy);
                             }
                             for (auto dummy: dummies) {
                                 ctx.template patch<instructions::Dummy>(dummy);
                             }
-                            ctx.template patch<x86::inst::CallRIP2>(dummies, callRip->argz, callRip->id);
-                        });
-                    }
-                },
-                CASEP(x86::inst::CallREG<CTX>, callRip) {
-                    auto size = callRip->target.isValid() ? cfg.getRecord(callRip->target).sizeBytes() : 0;
+                        } else {
+                            dummies = callRip->results;
+                        }
 
-                    if (size > 8) {
-                        assert(size % 8 == 0);
-                        logger.DEBUG("[dec] should rewrite call {} it returns {}", callRip->target, size);
+                        std::vector<std::vector<SSARegisterHandle> > bundles;
+                        for (auto arg: callRip->simpleArgs()) {
+                            if (splitPtr->contains(arg)) {
+                                auto v = splitPtr->at(arg);
+                                bundles.push_back(v);
+                            } else {
+                                bundles.push_back(std::vector{arg});
+                            }
+                        }
 
-                        patcher.addPatch(callRip, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                            std::vector<SSARegisterHandle> dummies;
-                            for (auto i = 0UL; i < size / 8; i++) {
-                                auto dummy = cfg.allocateDummy();
-                                (*splitPtr)[callRip->target].push_back(dummy);
-                                dummies.push_back(dummy);
-                            }
-                            for (auto dummy: dummies) {
-                                ctx.template patch<instructions::Dummy>(dummy);
-                            }
-                            ctx.template patch<x86::inst::CallREG2>(dummies, callRip->argz, callRip->reg);
-                        });
-                    }
+                        ctx.template patch<x86::inst::BaseCall>(dummies, bundles, callRip->id);
+                    });
                 },
                 CASEP(instructions::Dummy<CTX>, dummy) {
                     auto size = cfg.getRecord(dummy->target).sizeBytes();
@@ -161,6 +167,22 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                         (*splitPtr)[cow->target] = (*splitPtr)[cow->sub];
                         (*splitPtr)[cow->target][cow->offset / 8] = cow->src;
                     });
+                },
+                CASEP(instructions::Arg<CTX>, arg) {
+                    auto size = cfg.getRecord(arg->target).sizeBytes();
+                    if (size > 8) {
+                        logger.DEBUG("[dec] should split arg {} its size is {}", arg->target, size);
+                        assert(size % 8 == 0);
+
+                        patcher.addPatch(arg, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
+                            for (auto i = 0UL; i < size / 8; i++) {
+                                auto newDst = cfg.allocateDummy();
+                                (*splitPtr)[arg->target].push_back(newDst);
+                                ctx.template patch<instructions::Dummy>(newDst);
+                            }
+                            ctx.template patch<x86::inst::Arg2>((*splitPtr)[arg->target]);
+                        });
+                    }
                 }
             );
         });
