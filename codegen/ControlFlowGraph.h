@@ -943,7 +943,7 @@ struct ControlFlowGraph {
         return hand;
     }
 
-    SSARegisterHandle allocateDummy(size_t size = 8) {
+    SSARegisterHandle allocateDummy(size_t size) {
         return pushRegister(std::make_unique<typename CTX::REG>(CTX::REG::makeDummy(size)));
     }
 

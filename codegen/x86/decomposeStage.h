@@ -39,7 +39,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                         assert(size % 8 == 0);
                         patcher.addPatch(load, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto i = 0UL; i < size / 8; i++) {
-                                auto newDst = cfg.allocateDummy();
+                                auto newDst = cfg.allocateDummy(8);
                                 (*splitPtr)[load->getTarget()].push_back(newDst);
                                 ctx.template patch<instructions::PointerLoad>(newDst, load->ptr, 8, load->offset + i * 8);
                             }
@@ -116,7 +116,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                         std::vector<SSARegisterHandle> dummies;
                         if (size > 8) {
                             for (auto i = 0UL; i < size / 8; i++) {
-                                auto dummy = cfg.allocateDummy();
+                                auto dummy = cfg.allocateDummy(8);
                                 (*splitPtr)[tgt].push_back(dummy);
                                 dummies.push_back(dummy);
                             }
@@ -149,7 +149,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
 
                         patcher.addPatch(dummy, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto i = 0ul; i < size; i += 8) {
-                                auto dummyReg = cfg.allocateDummy();
+                                auto dummyReg = cfg.allocateDummy(8);
                                 (*splitPtr)[dummy->getTarget()].push_back(dummyReg);
                                 ctx.template patch<instructions::Dummy>(dummyReg);
                             }
@@ -176,7 +176,7 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
 
                         patcher.addPatch(arg, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto i = 0UL; i < size / 8; i++) {
-                                auto newDst = cfg.allocateDummy();
+                                auto newDst = cfg.allocateDummy(8);
                                 (*splitPtr)[arg->getTarget()].push_back(newDst);
                                 ctx.template patch<instructions::Dummy>(newDst);
                             }
