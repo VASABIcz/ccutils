@@ -9,7 +9,9 @@
 
 template<typename CTX>
 struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
+private:
     SSARegisterHandle target;
+public:
     string name;
     CodeBlock<CTX>* codeBlock = nullptr;
     std::vector<SSARegisterHandle> srcs;
@@ -18,6 +20,14 @@ struct IRInstruction: public VirtualCopy<IRInstruction<CTX>> {
     typedef CodeBlock<CTX> BaseGen;
 
     virtual ~IRInstruction() = default;
+    
+    SSARegisterHandle getTarget() {
+        return target;
+    }
+    
+    void setTarget(SSARegisterHandle tgt) {
+        target = tgt;
+    }
 
     IRInstruction(SSARegisterHandle target, string name, std::vector<SSARegisterHandle> srces): target(target), name(std::move(name)), srcs(srces) {}
 

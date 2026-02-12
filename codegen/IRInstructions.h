@@ -26,7 +26,7 @@ namespace instructions {
         ): IR2Instruction2<CTX>(tgt, lhs, rhs, stringify("{}_{}", Assembler::baseTypeToString(type), Assembler::binaryOpToString(op))), op(op), type(type) {}
 
         void generate(CTX::GEN& ctx) override {
-            ctx.assembler.binaryInst(op, ctx.getReg(this->target), ctx.getReg(this->getLhs()), ctx.getReg(this->getRhs()), type);
+            ctx.assembler.binaryInst(op, ctx.getReg(this->getTarget()), ctx.getReg(this->getLhs()), ctx.getReg(this->getRhs()), type);
         }
     };
 
@@ -59,7 +59,7 @@ namespace instructions {
 
         void generate(CTX::GEN &gen) override {
             auto temp = gen.allocateTemp(1);
-            auto tgt = gen.getReg(this->target);
+            auto tgt = gen.getReg(this->getTarget());
             auto val1 = gen.getReg(this->getValue());
             gen.assembler.movUnsigned(temp, 1);
             gen.assembler.xorInt(tgt, val1, temp);
@@ -177,10 +177,10 @@ namespace instructions {
         Assign(SSARegisterHandle tgt, SSARegisterHandle value): IR1Instruction<CTX>(tgt, "assign", value) {}
 
         void generate(CTX::GEN& gen) override {
-            auto destHandle = gen.getReg(this->target);
+            auto destHandle = gen.getReg(this->getTarget());
             auto valueHandle = gen.getReg(this->getValue());
 
-            gen.assembler.movReg(destHandle, valueHandle, 0, 0, gen.sizeBytes(this->target));
+            gen.assembler.movReg(destHandle, valueHandle, 0, 0, gen.sizeBytes(this->getTarget()));
         }
     };
 
@@ -525,7 +525,7 @@ namespace instructions {
         void visitSrc(std::function<void (SSARegisterHandle &)> fn) override {}
 
         void generate(CTX::GEN& gen) override {
-            auto res = gen.getReg(this->target);
+            auto res = gen.getReg(this->getTarget());
             if (isSigned)
                 gen.assembler.movSigned(res, value);
             else
@@ -543,7 +543,7 @@ namespace instructions {
         CharLiteral(SSARegisterHandle tgt, char value): IRBaseInstruction<char, CTX>(tgt, "char", value) {}
 
         void generate(CTX::GEN& gen) override {
-            auto res = gen.getReg(this->target);
+            auto res = gen.getReg(this->getTarget());
             gen.assembler.movUnsigned(res, this->value);
         }
     };
@@ -554,7 +554,7 @@ namespace instructions {
         FloatLiteral(SSARegisterHandle tgt, float value): IRBaseInstruction<float, CTX>(tgt, "float", value) {}
 
         void generate(CTX::GEN& gen) override {
-            auto res = gen.getReg(this->target);
+            auto res = gen.getReg(this->getTarget());
             gen.assembler.movUnsigned(res, bit_cast<u32>(this->value));
         }
     };
@@ -565,7 +565,7 @@ namespace instructions {
         DoubleLiteral(SSARegisterHandle tgt, double value): IRBaseInstruction<double, CTX>(tgt, "double", value) {}
 
         void generate(CTX::GEN& gen) override {
-            auto res = gen.getReg(this->target);
+            auto res = gen.getReg(this->getTarget());
             gen.assembler.movUnsigned(res, bit_cast<u64>(this->value));
         }
     };
@@ -576,7 +576,7 @@ namespace instructions {
         BoolLiteral(SSARegisterHandle tgt, bool value): IRBaseInstruction<bool, CTX>(tgt, "bool", value) {}
 
         void generate(CTX::GEN &gen) override {
-            auto res = gen.getReg(this->target);
+            auto res = gen.getReg(this->getTarget());
             gen.assembler.movUnsigned(res, this->value);
         }
     };
@@ -663,9 +663,9 @@ namespace instructions {
         }
 
         void generate(CTX::GEN& gen) override {
-            auto tgt = gen.getReg(this->target);
+            auto tgt = gen.getReg(this->getTarget());
             auto ptrReg = gen.getReg(ptr);
-            auto tgtSize = gen.sizeBytes(this->target);
+            auto tgtSize = gen.sizeBytes(this->getTarget());
 
             gen.assembler.readMem(tgt, ptrReg, tgtSize*offset, tgtSize);
         }

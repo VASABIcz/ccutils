@@ -18,7 +18,6 @@ namespace x86::inst {
             if (target.isValid()) this->results.push_back(target);
             this->bundles = bundles | views::transform([](auto b) { return std::vector<SSARegisterHandle>{b}; }) | ranges::to<std::vector<std::vector<SSARegisterHandle>>>();
             this->id = id;
-            this->target = target;
         }
 
         std::vector<SSARegisterHandle> simpleArgs() {

@@ -62,7 +62,7 @@ struct Lower {
         if (globalConsumed.contains(inst)) return;
 
         for (auto pattern: patterns) {
-            auto didMatch = matcher.matchPattern(cfg, inst, inst->target, pattern->pattern);
+            auto didMatch = matcher.matchPattern(cfg, inst, inst->getTarget(), pattern->pattern);
             if (didMatch == nullptr) continue;
             globalConsumed.insert(inst);
 
@@ -117,12 +117,12 @@ struct Lower {
         return virtRegs[hand];
     }
 
-    BaseRegister* getReg(IRInstruction<CTX>* hand) { return getReg(hand->target); }
+    BaseRegister* getReg(IRInstruction<CTX>* hand) { return getReg(hand->getTarget()); }
 
     BaseRegister* getReg(InstructionMatcher<CTX>::MatchedInstructions inst) { return getReg(inst.dst()); }
 
     std::vector<BaseRegister*> getRegs(std::vector<IRInstruction<CTX>*> hands) {
-        return hands | views::transform([&](auto it) { return getReg(it->target); }) | ranges::to<vector>();
+        return hands | views::transform([&](auto it) { return getReg(it->getTarget()); }) | ranges::to<vector>();
     }
 
     long getImm(IRInstruction<CTX>* inst) {
@@ -132,7 +132,7 @@ struct Lower {
         TODO()
     }
 
-    void emitLoadAddImm(Lower<CTX>& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVMEMIMM>(l.getReg(inst->target), l.getReg(inst[0, 0]->target), l.getImm(inst[0, 1]->target)); }
+    void emitLoadAddImm(Lower<CTX>& l, IM::MatchedInstructions inst, Block* block) { block->push<MOVMEMIMM>(l.getReg(inst->getTarget()), l.getReg(inst[0, 0]->target), l.getImm(inst[0, 1]->target)); }
 
     void matchCFG(ControlFlowGraph<CTX>& cfg, std::span<RewriteRule*> patterns) {
         cfg.forEachBlock([&](CodeBlock<CTX>& block) { matchBlock(cfg, block, patterns); });
@@ -293,7 +293,7 @@ struct Lower {
                 PAT(instructions::PointerLoad)(PAT(instructions::AllocaPtr)()),
                 [&](Lower& l, IM::MatchedInstructions inst, Block* block) {
                     auto pLoad = inst.inst()->template cst<instructions::PointerLoad>();
-                    block->push<LOADSTACK>(getReg(inst), allocaSlots[inst[0].inst()], pLoad->offset, cfg.getSize(pLoad->target));
+                    block->push<LOADSTACK>(getReg(inst), allocaSlots[inst[0].inst()], pLoad->offset, cfg.getSize(pLoad->getTarget()));
                 }
             )
 

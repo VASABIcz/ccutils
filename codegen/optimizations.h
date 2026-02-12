@@ -30,8 +30,8 @@ namespace optimizations {
     void replaceInstr(typename CTX::IRGEN& gen, SSARegisterHandle chad, const std::set<SSARegisterHandle>& virgins) {
         forEachInstruction(gen.graph, [&](auto& inst, auto& node) -> bool {
             // patch writes
-            if (virgins.contains(inst->target)) {
-                inst->target = chad;
+            if (virgins.contains(inst->getTarget())) {
+                inst->setTarget(chad);
             }
             // patch reads
             inst->visitSrcs([&](auto& src) {
@@ -80,14 +80,14 @@ namespace optimizations {
 
                 auto* phi = instruction->template cst<instructions::PhiFunction<CTX>>();
                 if (phi->getAllVersions().size() > 1) continue;
-                auto target = phi->target;
+                auto target = phi->getTarget();
                 auto valu = *phi->getVersions().begin();
 
                 for (const auto& otherBlock: gen.nodes()) {
                     for (const auto& instruction1: otherBlock->getInstructions()) {
                         if (instruction1->template is<instructions::PhiFunction<CTX>>()) {
                             auto phaj = instruction1->template cst<instructions::PhiFunction<CTX>>();
-                            if (phaj->target == valu) {
+                            if (phaj->getTarget() == valu) {
                                 phaj->remove(target);
                                 continue;
                             }
@@ -118,7 +118,7 @@ namespace optimizations {
             if (!inst->template is<instructions::Assign<CTX>>()) return true;
 
             auto* assign = inst->template cst<instructions::Assign<CTX>>();
-            auto tgt = assign->target;
+            auto tgt = assign->getTarget();
             auto value = assign->getValue();
 
             replaceInstr<CTX>(gen, value, set{tgt});

@@ -183,7 +183,7 @@ size_t CodeGen<CTX>::getBasicBlockOffset(BlockId id, std::span<BlockId> lineariz
 template<typename CTX>
 void CodeGen<CTX>::fixUnliveRanges() {
     irGen.graph.forEachInstruction([&](auto& inst) {
-        auto tgt = inst.target;
+        auto tgt = inst.getTarget();
         if (not tgt.isValid()) return;
         if (currentLiveRanges.contains(tgt)) return;
 
@@ -198,12 +198,12 @@ void CodeGen<CTX>::fixupPhiLiveRanges(std::span<BlockId> linearized) {
             for (auto [block, value]: phi->getRawVersions()) {
                 auto offset = getBasicBlockOffset(block, linearized);
                 auto size = getBlock(block).getInstructions().size();
-                if (not currentLiveRanges.contains(phi->target)) {
+                if (not currentLiveRanges.contains(phi->getTarget())) {
                     return;
                 }
-                assert(currentLiveRanges.contains(phi->target));
+                assert(currentLiveRanges.contains(phi->getTarget()));
                 assert(offset + size - 1 < currentLiveRanges.length());
-                currentLiveRanges.appendRange(phi->target, offset + size - 1, true);
+                currentLiveRanges.appendRange(phi->getTarget(), offset + size - 1, true);
             }
         }
     });

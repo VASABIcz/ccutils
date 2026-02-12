@@ -32,15 +32,15 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
             dispatch(
                 &inst,
                 CASEP(instructions::PointerLoad<CTX>, load) {
-                    auto size = cfg.getRecord(load->target).sizeBytes();
+                    auto size = cfg.getRecord(load->getTarget()).sizeBytes();
                     if (size > 8) {
-                        logger.DEBUG("[dec] should split load {} its size is {}", load->target, size);
-                        splitRegs.emplace(load->target, std::vector<SSARegisterHandle>{});
+                        logger.DEBUG("[dec] should split load {} its size is {}", load->getTarget(), size);
+                        splitRegs.emplace(load->getTarget(), std::vector<SSARegisterHandle>{});
                         assert(size % 8 == 0);
                         patcher.addPatch(load, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto i = 0UL; i < size / 8; i++) {
                                 auto newDst = cfg.allocateDummy();
-                                (*splitPtr)[load->target].push_back(newDst);
+                                (*splitPtr)[load->getTarget()].push_back(newDst);
                                 ctx.template patch<instructions::PointerLoad>(newDst, load->ptr, 8, load->offset + i * 8);
                             }
                         });
@@ -61,30 +61,30 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                 },
                 CASEP(instructions::BitExtract<CTX>, extract) {
                     // auto size = cfg.getRecord(extract->subject).sizeBytes();
-                    logger.DEBUG("[dec] will split extract {} its marked", extract->target);
+                    logger.DEBUG("[dec] will split extract {} its marked", extract->getTarget());
                     // assert(extract->size % 8 == 0);
                     assert(extract->offset % 8 == 0);
                     // assert(extract->size == 8); // for now assume 8B, we can support larger sizes in future
 
                     patcher.addPatch(extract, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                        ctx.template patch<instructions::Assign>(extract->target,
+                        ctx.template patch<instructions::Assign>(extract->getTarget(),
                                                                  (*splitPtr)[extract->subject][extract->offset / 8]);
                     });
                 },
-                CASEP(instructions::PhiFunction<CTX>, phi) { logger.DEBUG("[dec] TODO phi {}", phi->target); },
+                CASEP(instructions::PhiFunction<CTX>, phi) { logger.DEBUG("[dec] TODO phi {}", phi->getTarget()); },
                 CASEP(instructions::MakeCompound<CTX>, mC) {
-                    auto size = cfg.getRecord(mC->target).sizeBytes();
+                    auto size = cfg.getRecord(mC->getTarget()).sizeBytes();
 
-                    logger.DEBUG("[dec] should split make_compound {} its size is {}", mC->target, size);
+                    logger.DEBUG("[dec] should split make_compound {} its size is {}", mC->getTarget(), size);
                     assert(size % 8 == 0);
                     patcher.addPatch(mC, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                        if (splitPtr->contains(mC->target)) {
-                            for (auto [tgt, input]: views::zip((*splitPtr)[mC->target], mC->inputs)) {
+                        if (splitPtr->contains(mC->getTarget())) {
+                            for (auto [tgt, input]: views::zip((*splitPtr)[mC->getTarget()], mC->inputs)) {
                                 ctx.template patch<instructions::Assign>(tgt, input);
                             }
                         } else {
                             for (auto input: mC->inputs) {
-                                (*splitPtr)[mC->target].push_back(input);
+                                (*splitPtr)[mC->getTarget()].push_back(input);
                             }
                         }
                     });
@@ -141,46 +141,46 @@ inline void decomposeStage(ControlFlowGraph<CTX>& cfg, Logger& logger) {
                     });
                 },
                 CASEP(instructions::Dummy<CTX>, dummy) {
-                    auto size = cfg.getRecord(dummy->target).sizeBytes();
+                    auto size = cfg.getRecord(dummy->getTarget()).sizeBytes();
 
                     if (size > 8) {
                         assert(size % 8 == 0);
-                        logger.DEBUG("[dec] should rewrite dummy {} it returns {}", dummy->target, size);
+                        logger.DEBUG("[dec] should rewrite dummy {} it returns {}", dummy->getTarget(), size);
 
                         patcher.addPatch(dummy, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto i = 0ul; i < size; i += 8) {
                                 auto dummyReg = cfg.allocateDummy();
-                                (*splitPtr)[dummy->target].push_back(dummyReg);
+                                (*splitPtr)[dummy->getTarget()].push_back(dummyReg);
                                 ctx.template patch<instructions::Dummy>(dummyReg);
                             }
                         });
                     }
                 },
                 CASEP(instructions::COW<CTX>, cow) {
-                    auto size = cfg.getRecord(cow->target).sizeBytes();
+                    auto size = cfg.getRecord(cow->getTarget()).sizeBytes();
 
                     assert(size % 8 == 0);
                     assert(cow->offset % 8 == 0);
-                    logger.DEBUG("[dec] should rewrite cow {} it returns {}", cow->target, size);
+                    logger.DEBUG("[dec] should rewrite cow {} it returns {}", cow->getTarget(), size);
 
                     patcher.addPatch(cow, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
-                        (*splitPtr)[cow->target] = (*splitPtr)[cow->sub];
-                        (*splitPtr)[cow->target][cow->offset / 8] = cow->src;
+                        (*splitPtr)[cow->getTarget()] = (*splitPtr)[cow->sub];
+                        (*splitPtr)[cow->getTarget()][cow->offset / 8] = cow->src;
                     });
                 },
                 CASEP(instructions::Arg<CTX>, arg) {
-                    auto size = cfg.getRecord(arg->target).sizeBytes();
+                    auto size = cfg.getRecord(arg->getTarget()).sizeBytes();
                     if (size > 8) {
-                        logger.DEBUG("[dec] should split arg {} its size is {}", arg->target, size);
+                        logger.DEBUG("[dec] should split arg {} its size is {}", arg->getTarget(), size);
                         assert(size % 8 == 0);
 
                         patcher.addPatch(arg, [=](auto& cfg, CfgPatcher<CTX>::PatchContext& ctx) {
                             for (auto i = 0UL; i < size / 8; i++) {
                                 auto newDst = cfg.allocateDummy();
-                                (*splitPtr)[arg->target].push_back(newDst);
+                                (*splitPtr)[arg->getTarget()].push_back(newDst);
                                 ctx.template patch<instructions::Dummy>(newDst);
                             }
-                            ctx.template patch<x86::inst::Arg2>((*splitPtr)[arg->target]);
+                            ctx.template patch<x86::inst::Arg2>((*splitPtr)[arg->getTarget()]);
                         });
                     }
                 }

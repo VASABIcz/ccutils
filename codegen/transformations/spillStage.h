@@ -17,11 +17,11 @@ void spillStage(ControlFlowGraph<CTX>& cfg) {
         if (inst.template is<instructions::AddressOf>()) {
             auto size = cfg.getRecord(inst.getSrc(0)).sizeBytes();
             if (!leaked.contains(inst.getSrc(0))) {
-                leaked.emplace(inst.getSrc(0), make_pair(inst.target, size));
+                leaked.emplace(inst.getSrc(0), make_pair(inst.getTarget(), size));
                 return;
             }
             auto [ptr, _size] = leaked[inst.getSrc(0)];
-            rewrite[inst.target] = ptr;
+            rewrite[inst.getTarget()] = ptr;
         }
     });
 
@@ -35,7 +35,7 @@ void spillStage(ControlFlowGraph<CTX>& cfg) {
 
     cfg.forEachInstruction([&](IRInstruction<CTX>& inst) {
         auto srces = inst.getSrces();
-        auto target = inst.target;
+        auto target = inst.getTarget();
         auto i = &inst;
 
         if (inst.template is<instructions::AddressOf>()) {

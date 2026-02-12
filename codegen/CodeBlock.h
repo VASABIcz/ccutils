@@ -172,7 +172,7 @@ public:
         for (auto phi : getPhiSpan()) {
             auto value = phi->getBySource(source);
             if (value.has_value()) {
-                pis[*value] = phi->target;
+                pis[*value] = phi->getTarget();
             }
         }
 
@@ -228,7 +228,7 @@ public:
 
         for (const auto& inst : getInstructions()) {
             if (const auto& arg = inst->template cst<instructions::Arg<CTX>>(); arg) {
-                buf.push_back(arg->target);
+                buf.push_back(arg->getTarget());
             }
         }
 

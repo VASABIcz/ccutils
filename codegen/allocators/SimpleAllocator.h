@@ -106,7 +106,7 @@ struct SimpleAlloc: Allocator<CTX> {
 
             // handle allocating of alloca instructions
             auto alloca1 = instruction.template cst<instructions::AllocaPtr>();
-            if (alloca1 != nullptr && alloca1->target == reg) {
+            if (alloca1 != nullptr && alloca1->getTarget() == reg) {
                 auto tmp = assembler->allocateStack(alloca1->size);
                 auto asms = assembler->allocateRegister(8);
                 assembler->addressOf(asms, tmp);
@@ -115,10 +115,10 @@ struct SimpleAlloc: Allocator<CTX> {
             }
             // arg is phony
             auto arg = instruction.template cst<instructions::Arg>();;
-            if (arg != nullptr && arg->target == reg) continue;
+            if (arg != nullptr && arg->getTarget() == reg) continue;
 
             auto phi = instruction.template cst<instructions::PhiFunction>();
-            if (phi != nullptr && phi->target == reg) {
+            if (phi != nullptr && phi->getTarget() == reg) {
                 if (not regs.contains(reg)) allocateRegister(reg);
                 continue;
             }
