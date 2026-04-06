@@ -12,6 +12,7 @@ struct GraphColoring {
     std::shared_ptr<Logger> logger;
 
     GraphColoring(std::shared_ptr<Logger> logger) : logger(logger) {}
+    GraphColoring() = default;
 
     size_t interferenceCount(VHAND reg) { return this->interference[reg].size(); }
 

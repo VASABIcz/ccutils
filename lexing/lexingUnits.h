@@ -1,5 +1,6 @@
 #pragma once
 #include "LexingUnit.h"
+#include "SourceProvider.h"
 
 template<typename T>
 class KeywordLexingUnit: public LexingUnit<T> {

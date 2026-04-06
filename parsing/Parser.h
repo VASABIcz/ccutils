@@ -239,19 +239,12 @@ public:
                 if (TRY(parseOne(Ahead))) continue;
             }
 
-            if (this->isPeekTypeConsume(TokenType1::Semicolon)) continue;
 
             if (TRY(parseOne(Behind))) continue;
 
-            if (this->isPeekTypeConsume(TokenType1::Semicolon)) continue;
-
             if (TRY(parseOne(Around))) continue;
 
-            if (this->isPeekTypeConsume(TokenType1::Semicolon)) continue;
-
             if (TRY(parseOne(Ahead))) continue;
-
-            if (this->isPeekTypeConsume(TokenType1::Semicolon)) continue;
 
             return unexpected{ParserError<IN1>{CantParse<IN1>{TRY(this->getTok())}}};
         }

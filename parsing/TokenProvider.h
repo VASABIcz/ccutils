@@ -26,6 +26,13 @@ public:
         return isPeekTypeOffset(type, 0);
     }
 
+    ParserResult<Token<T>, T> peekNext() {
+        auto res = this->getToken();
+        if (not res.has_value()) return unexpected(OutOfTokens());
+
+        return *res;
+    }
+
     bool isPeekSeq(span<const T> args) const {
         auto i = 0u;
 
@@ -86,6 +93,14 @@ public:
     [[nodiscard]]
     ParserResult<Token<T>, T> getAssert(T type) {
         if (!isPeekType(type)) return unexpected(WrongToken<T>(type, getToken(), ""));
+
+        auto t = getTokenOffset(0).value();
+        consume();
+        return t;
+    }
+
+    Token<T> unwrapToken(T type) {
+        if (!isPeekType(type)) {PANIC();}
 
         auto t = getTokenOffset(0).value();
         consume();

@@ -133,4 +133,10 @@ class X86Instruction: public Debuggable {
     bool is() {
         return dynamic_cast<T*>(this) != nullptr;
     }
+
+    template<typename T>
+    T* as() {
+        assert(is<T>());
+        return dynamic_cast<T*>(this);
+    }
 };

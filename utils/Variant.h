@@ -38,7 +38,7 @@ struct MutVariant {
 #define CASE_REF(v) [&](v& it)
 #define CASE1(v) [&](v&& it)
 #define CASE_VAL(v, ...) [&](v ARGS_OR_DEFAULT(it, __VA_ARGS__))
-#define DEFAULT [&] (auto&& it)
+#define _DEFAULT [&] (auto&& it)
 #define DEFAULT_VAL [&] (auto it)
 
 #define CASEP(v, ...) [&](v* ARGS_OR_DEFAULT(it, __VA_ARGS__))

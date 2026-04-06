@@ -12,10 +12,9 @@
 #include "../utils/Errorable.h"
 #include "LexingUnit.h"
 
-template <typename T>
-class SourceProvider {
+class SourceProviderBase {
 public:
-    explicit SourceProvider(string_view data) : data(data) {
+    explicit SourceProviderBase(string_view data) : data(data) {
 
     }
 
@@ -96,14 +95,20 @@ public:
         return counter >= data.size();
     }
 
-    Token<T> createToken(const Position& position, T type) const {
-        return Token<T>(position, sliceToHere(position), type);
-    }
-
     [[nodiscard]] string_view remaining() const {
         return string_view{data.begin()+counter, data.end()};
     }
-private:
+
+    void consumeWhite() {
+        while (isPeekCharFn([](auto c) { return std::isspace(c); })) {
+            consume();
+        }
+    }
+
+    bool isPeekConsume(char c) {
+        return isPeekCharConsume(c);
+    }
+protected:
     char consumeOne() {
         if (isPeekChar('\n')) {
             row++;
@@ -137,4 +142,21 @@ private:
     size_t counter = 0;
     size_t row = 0;
     size_t column = 0;
+};
+
+template <typename T>
+class SourceProvider: public SourceProviderBase {
+public:
+    explicit SourceProvider(string_view data) : SourceProviderBase(data) {
+
+    }
+
+    Token<T> createToken(const Position& position, T type) const {
+        return Token<T>(position, sliceToHere(position), type);
+    }
+
+
+    [[nodiscard]] string_view sliceToHere(const Position& position) const {
+        return string_view{data.begin()+position.index, data.begin()+counter};
+    }
 };

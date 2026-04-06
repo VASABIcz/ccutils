@@ -33,6 +33,18 @@ struct Range {
     }
 
     bool intersects(Range other) { return Range::intersects(other, *this) || Range::intersects(*this, other); }
+
+    Range grow() {
+        auto f = (first->prev == nullptr) ? first : first->prev;
+        auto n = (last->next == nullptr) ? last : last->next;
+
+        return {f, n};
+    }
+
+    bool touches(Range other) {
+        auto o = other.grow();
+        return intersects(o);
+    }
 };
 
 struct ListNode {
@@ -91,7 +103,7 @@ struct List {
         ListNode* prev = nullptr;
         forEach([&](ListNode* it) {
             auto r1 = it->range;
-            if (r1.intersects(newRange)) {
+            if (r1.touches(newRange)) {
                 newRange = r1.merge(newRange);
                 remove(it, prev);
                 return;

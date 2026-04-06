@@ -10,8 +10,6 @@
 #include "instructions.hpp"
 
 struct Graph {
-    std::map<x86::X64Register, BaseRegister*> regMap;
-
     BaseRegister* getReg(x86::X64Register r) {
         if (!regMap.contains(r)) {
             regMap[r] = allocaVirtReg();
@@ -22,6 +20,8 @@ struct Graph {
     }
 
     Graph(std::shared_ptr<Logger> logger) : logger(logger) {
+        root = makeBlock();
+        // why do this? ... causing issues with save/restore calee save regs, commenting won't fix but ... 
         for (auto reg : x86::ALL_REGS) {
             getReg(reg);
         }
@@ -44,7 +44,7 @@ struct Graph {
         return acu;
     }
 
-    std::map<size_t, size_t> stackOffsets() const {
+    std::pair<std::map<size_t, size_t>, size_t> stackOffsets() const {
         std::map<size_t, size_t> offsets;
         size_t acu = 0;
         for (auto [i, size]: stackSizes | views::enumerate) {
@@ -52,19 +52,22 @@ struct Graph {
             acu += size;
         }
 
-        return offsets;
+        return {offsets, acu};
     }
 
-    GraphColoring registerAllocate(const std::function<void(size_t)>& onFailedAlloc = [](auto) {}) {
+GraphColoring registerAllocate(const std::function<void(size_t)>& onFailedAlloc = [](auto) {}) {
         size_t spillCounter = 0;
+
+        GraphColoring gc;
 
         while (true) {
             this->calcLiveRanges();
 
-            auto gc = this->buildAllocatorGraph();
+            gc = this->buildAllocatorGraph();
 
             auto res = gc.regAllocFast();
-            if (not res.has_value()) return gc;
+            allocated = gc.allocated;
+            if (not res.has_value()) break;
             logger->DEBUG("[graph-color] FAILED to color {}", (*res)->toString());
 
             auto toSpill = gc.getInterferenceMaxNeighbour(*res);
@@ -76,6 +79,10 @@ struct Graph {
 
             spillCounter += 1;
         }
+
+        // prune coloring ... this is kind of a hack?
+
+        return gc;
     }
 
     size_t allocVirtId() { return virtCounter++; }
@@ -152,12 +159,20 @@ struct Graph {
             std::stringstream buffer;
             printBlockInst(inst, buffer);
             ss << stringify("<tr><td align=\"left\" port=\"i{}\">{}</td>", inst->orderId, buffer.str()); // row start
-            inst->forEachDef([&](BaseRegister* def) {
-                auto s = virts[def].getStart(inst);
+            
+            for (auto [def, set] : virtualRanges[block]) {
+                auto s = set.getStart(inst);
                 if (s.has_value()) {
-                    ss << stringify("<td align=\"left\" rowspan=\"{}\" bgcolor=\"#{}\">{}</td>", s->getLength(), stringify("{:x}", ((uint32_t)hashInt(def->as<Virtual>()->id+31))>>8).substr(2, 6), def->toString());
+                    auto color = stringify("{:x}", ((uint32_t)hashInt(def->as<Virtual>()->id+31))>>8).substr(2, 6);
+                    std::string ss1;
+                    if (allocated.contains(def)) {
+                        ss1 = allocated.at(def).toString();
+                    } else {
+                        ss1 = def->toString();
+                    }
+                    ss << stringify("<td align=\"left\" rowspan=\"{}\" bgcolor=\"#{}\">{}</td>", s->getLength(), color, ss1);
                 }
-            });
+            }
             ss << "</tr>\n"; // row end
             i++;
         }
@@ -188,15 +203,24 @@ struct Graph {
         if (foundDef != nullptr) {
             markLiveVirt(block, foundDef, foundUse, virtId);
         } else {
-            println("DID NOT FIND DEF FOR {}", virtId->toString());
+            println("DID NOT FIND DEF FOR {} IN {}", virtId->toString(), block->id);
             markLiveVirt(block, block->first, foundUse, virtId); // implicitly mark live range, search in incoming
 
             for (auto inc: block->incoming) {
                 findDefVirtRec(inc, nullptr, virtId, visited);
             }
         }
+    }
 
-        visited.erase(block);
+    std::set<VHAND> getAliveHands() {
+        std::set<VHAND> aliveHands;
+        for (auto [block, _it] : virtualRanges) {
+            for (auto [hand, range] : _it) {
+                aliveHands.insert(hand);
+            }
+        }
+
+        return aliveHands;
     }
 
     void calcLiveRanges() {
@@ -260,8 +284,10 @@ struct Graph {
 
         std::map<VHAND, std::set<VHAND>> virtToVirt;
 
+        std::set<VHAND> phys;
         for (auto block: blocks) {
             for (auto [regA, rangeA]: virtualRanges[block]) {
+                if (regA->hintReg.has_value()) phys.insert(regA);
                 for (auto [regB, rangeB]: virtualRanges[block]) {
                     if (rangeA.intersects(rangeB)) {
                         virtToVirt[regA].insert(regB);
@@ -272,8 +298,8 @@ struct Graph {
         }
 
         GraphColoring gc = GraphColoring::create(logger, virtToVirt);
-        for (auto it : regMap) {
-            gc.colorReg(it.second, it.first);
+        for (auto hand : phys) {
+            gc.colorReg(hand, *hand->hintReg);
         }
 
         return gc;
@@ -317,11 +343,20 @@ struct Graph {
         e.appendLine("]");
     }
 
+    void dumpGraph(std::string path) {
+        GVEmit e;
+        emitGV2(e);
+
+        writeBytesToFile(path, e.ss.str());
+    }
+
     void emitGV2(GVEmit& e) {
         e.appendLine("digraph G {");
         e.appendLine("nodesep=2;");
         e.appendLine("splines=ortho;");
         e.appendLine("node [shape=Mrecord, nojustify=false, fontname=\"monospace\", fontsize=66];");
+        assert(root != nullptr);
+        assert(root->first != nullptr);
         e.appendLine("START -> b{}:i{} [tailport=s, headport=n];", root->id, root->first->orderId);
 
         e.ident([&] {
@@ -358,7 +393,7 @@ struct Graph {
         });
 
         for (auto block: blocks) {
-            e.ss << stringify("  b{} [shape=none label=<<TABLE cellpadding=\"24\"  style='rounded'>", block->id);
+            e.ss << stringify("  b{} [shape=none xlabel=\"block-{}\" label=<<TABLE cellpadding=\"24\"  style='rounded'>", block->id, block->id);
             printLiveRangeGraph(e.ss, block);
             e.ss << "</TABLE>>];";
         }
@@ -382,6 +417,31 @@ struct Graph {
         return b;
     }
 
+    void insertPrologueEpilogue(std::set<x86::X64Register> regs) {
+        std::map<x86::X64Register, StackSlot> ss;
+        for (auto reg: regs) {
+            auto saveType = x86::sysVSave(reg);
+            if (saveType != x86::X64Register::SaveType::Callee) continue;
+
+            ss[reg] = allocStackSlot(8, 8);
+            root->insertBefore<STORESTACK>(root->first, getReg(reg), ss[reg], 0);
+        }
+
+        for (auto block: blocks) {
+            for (auto inst: block->iterator()) {
+                if (inst->is<RET>()) {
+                    for (auto reg: regs) {
+                        auto saveType = x86::sysVSave(reg);
+                        if (saveType != x86::X64Register::SaveType::Callee) continue;
+
+                        block->insertBefore<LOADSTACK>(inst, getReg(reg), ss[reg], 0, 8);
+                    }
+                }
+            }
+        }
+    }
+
+    std::map<x86::X64Register, BaseRegister*> regMap;
     std::vector<Block*> blocks;
     Block* root = nullptr;
 
@@ -389,10 +449,9 @@ struct Graph {
     std::vector<size_t> stackSizes;
     std::shared_ptr<Logger> logger;
 
-    std::vector<size_t> linearized;
-
     // live ranges
     std::map<Block*, std::map<VHAND, RangeSet>> virtualRanges;
+    std::map<VHAND, x86::X64Register> allocated;
 
     std::string tag;
 };

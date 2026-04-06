@@ -8,6 +8,15 @@ struct RET: X86Instruction {
     void init(BetterSpan<BaseRegister*> uses) {
         setUse(std::vector<BaseRegister*>{uses.begin(), uses.end()});
     }
+
+    template<typename... Args>
+    void init(Args... args) {
+        for (BaseRegister* arg : {args...}) {
+            addUse(arg);
+        }
+    }
+
+    void init() {}
 };
 
 struct FAKE_DEF: X86Instruction {
@@ -52,6 +61,12 @@ struct CALLREG: X86Instruction {
 
 struct MOVRIP: X86Instruction {
     DEBUG_INFO2(MOVRIP)
+    size_t id;
+    void init(BaseRegister* dst, size_t id) { this->id = id; addDef(dst); }
+};
+
+struct LEARIP: X86Instruction {
+    DEBUG_INFO2(LEARIP)
     size_t id;
     void init(BaseRegister* dst, size_t id) { this->id = id; addDef(dst); }
 };
@@ -175,6 +190,30 @@ struct JMP: X86Instruction {
     DEBUG_INFO2(JMP)
     Block* tgt;
     void init(Block* tgt) { this->tgt = tgt; }
+};
+
+struct JLS: X86Instruction {
+    DEBUG_INFO2(JLS)
+    Block* tgt;
+    void init(BaseRegister* flags, Block* tgt) { addUse(flags); this->tgt = tgt; }
+};
+
+struct JGT: X86Instruction {
+    DEBUG_INFO2(JGT)
+    Block* tgt;
+    void init(BaseRegister* flags, Block* tgt) { addUse(flags); this->tgt = tgt; }
+};
+
+struct JLE: X86Instruction {
+    DEBUG_INFO2(JLS)
+    Block* tgt;
+    void init(BaseRegister* flags, Block* tgt) { addUse(flags); this->tgt = tgt; }
+};
+
+struct JGE: X86Instruction {
+    DEBUG_INFO2(JGT)
+    Block* tgt;
+    void init(BaseRegister* flags, Block* tgt) { addUse(flags); this->tgt = tgt; }
 };
 
 struct CMP: X86Instruction {
@@ -414,5 +453,16 @@ struct SYSCALL: X86Instruction {
         setDef(std::vector<BaseRegister*>{defs.begin(), defs.end()});
         setDef(std::vector<BaseRegister*>{kills.begin(), kills.end()});
         setDef(std::vector<BaseRegister*>{uses.begin(), uses.end()});
+    }
+};
+
+struct LEAIMM: X86Instruction {
+    DEBUG_INFO2(LEAIMM)
+    long imm;
+
+    void init(BaseRegister* dst, BaseRegister* src, long imm) {
+        this->imm = imm;
+        addDef(dst);
+        addUse(src);
     }
 };

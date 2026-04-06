@@ -146,4 +146,10 @@ struct Block {
         b->incoming.insert(this);
         this->outgoing.insert(b);
     }
+
+    template<typename T, typename... Args>
+    void replace(X86Instruction* target, Args&&... args) {
+        insertBefore<T>(target, std::forward<Args>(args)...);
+        erase(target);
+    }
 };

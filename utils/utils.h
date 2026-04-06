@@ -115,14 +115,14 @@ void move() {}
 
 #define DEBUG_INFO(name)                                                                                                                                                                               \
   public:                                                                                                                                                                                              \
-    [[nodiscard]] const string_view className() const override {                                                                                                                                       \
+    [[nodiscard]] string_view className() const override {                                                                                                                                       \
         return #name;                                                                                                                                                                                  \
     }                                                                                                                                                                                                  \
                                                                                                                                                                                                        \
   private:
 
 #define DEBUG_INFO2(name)                                                                                                                                                                              \
-    [[nodiscard]] const string_view className() const override {                                                                                                                                       \
+    [[nodiscard]] string_view className() const override {                                                                                                                                       \
         return #name;                                                                                                                                                                                  \
     }
 

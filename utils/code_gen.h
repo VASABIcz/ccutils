@@ -77,4 +77,12 @@ namespace cg {
         VirtualFree(ptr, size, MEM_RELEASE);
 #endif
     }
+
+    inline void* function(span<const u8> code) {
+        auto* ptr = allocateJIT(code.size());
+        std::memcpy(ptr, code.data(), code.size());
+        makeRX(ptr, code.size());
+
+        return ptr;
+    }
 }

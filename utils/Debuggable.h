@@ -3,5 +3,5 @@
 
 class Debuggable {
 public:
-    [[nodiscard]] virtual const std::string_view className() const = 0;
+    [[nodiscard]] virtual std::string_view className() const = 0;
 };
