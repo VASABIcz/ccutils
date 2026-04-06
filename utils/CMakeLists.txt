@@ -21,6 +21,7 @@ add_library(utils OBJECT
         BetterSpan.h
         BetterOption.h
         dispatch.h
+        lips.h
 )
 
 set_target_properties(utils PROPERTIES LINKER_LANGUAGE CXX)

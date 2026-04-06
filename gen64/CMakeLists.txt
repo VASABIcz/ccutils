@@ -7,4 +7,5 @@ add_library(gen64 OBJECT
         Register.h
         X86mc.cpp
         elf.h
+        linking.h
 )
